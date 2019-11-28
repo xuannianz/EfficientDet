@@ -102,3 +102,10 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+.idea/
+*.h5
+datasets/
+logs/
+checkpoints/
+*.npy
+!utils/compute_overlap.cpython-36m-x86_64-linux-gnu.so
