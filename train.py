@@ -309,13 +309,11 @@ def main(args=None):
 
     # freeze backbone layers
     if args.freeze_backbone:
-        for i in range(1, 214):
+        for i in range(1, 227):
             model.layers[i].trainable = False
-        # for layer in model.layers[1].layers:
-        #     layer.trainable = False
 
     # compile model
-    model.compile(optimizer=Adam(lr=1e-4), loss={
+    model.compile(optimizer=Adam(lr=1e-3), loss={
         'regression': smooth_l1(),
         'classification': focal()
     }, )

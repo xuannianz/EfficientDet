@@ -1,3 +1,5 @@
+from functools import reduce
+
 # from keras import layers
 # from keras import initializers
 # from keras import models
@@ -18,50 +20,66 @@ backbones = [EfficientNetB0, EfficientNetB1, EfficientNetB2,
              EfficientNetB3, EfficientNetB4, EfficientNetB5, EfficientNetB6]
 
 
+def DepthwiseConvBlock(kernel_size, strides, name):
+    f1 = layers.DepthwiseConv2D(kernel_size=kernel_size, strides=strides, padding='same',
+                                use_bias=False, name='{}_dconv'.format(name))
+    f2 = layers.BatchNormalization(name='{}_bn'.format(name))
+    f3 = layers.ReLU(name='{}_relu'.format(name))
+    return reduce(lambda f, g: lambda *args, **kwargs: g(f(*args, **kwargs)), (f1, f2, f3))
+
+
+def ConvBlock(num_channels, kernel_size, strides, name):
+    f1 = layers.Conv2D(num_channels, kernel_size=kernel_size, strides=strides, padding='same',
+                       use_bias=False, name='{}_conv'.format(name))
+    f2 = layers.BatchNormalization(name='{}_bn'.format(name))
+    f3 = layers.ReLU(name='{}_relu'.format(name))
+    return reduce(lambda f, g: lambda *args, **kwargs: g(f(*args, **kwargs)), (f1, f2, f3))
+
+
 def build_BiFPN(features, num_channels, id):
     if id == 0:
         _, _, C3, C4, C5 = features
-        P3 = layers.Conv2D(num_channels, kernel_size=1, strides=1, padding='same', name='BiFPN_{}_P3'.format(id))(C3)
-        P4 = layers.Conv2D(num_channels, kernel_size=1, strides=1, padding='same', name='BiFPN_{}_P4'.format(id))(C4)
-        P5 = layers.Conv2D(num_channels, kernel_size=1, strides=1, padding='same', name='BiFPN_{}_P5'.format(id))(C5)
-        # "P6 is obtained via a 3x3 stride-2 conv on C5"
-        P6 = layers.Conv2D(num_channels, kernel_size=3, strides=2, padding='same', name='BiFPN_{}_P6'.format(id))(C5)
-        # "P7 is computed by applying ReLU followed by a 3x3 stride-2 conv on P6"
-        P7 = layers.Activation('relu', name='C6_relu')(P6)
-        P7 = layers.Conv2D(num_channels, kernel_size=3, strides=2, padding='same', name='BiFPN_{}_P7'.format(id))(P7)
+        P3_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P3'.format(id))(C3)
+        P4_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P4'.format(id))(C4)
+        P5_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P5'.format(id))(C5)
+        P6_in = ConvBlock(num_channels, kernel_size=3, strides=2, name='BiFPN_{}_P6'.format(id))(C5)
+        P7_in = ConvBlock(num_channels, kernel_size=3, strides=2, name='BiFPN_{}_P7'.format(id))(P6_in)
     else:
-        P3, P4, P5, P6, P7 = features
+        P3_in, P4_in, P5_in, P6_in, P7_in = features
+        P3_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P3'.format(id))(P3_in)
+        P4_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P4'.format(id))(P4_in)
+        P5_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P5'.format(id))(P5_in)
+        P6_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P6'.format(id))(P6_in)
+        P7_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P7'.format(id))(P7_in)
 
     # upsample
-    P7_U = layers.UpSampling2D()(P7)
-    P6 = layers.Add()([P7_U, P6])
-    P6_U = layers.UpSampling2D()(P6)
-    P5 = layers.Add()([P6_U, P5])
-    P5_U = layers.UpSampling2D()(P5)
-    P4 = layers.Add()([P5_U, P4])
-    P4_U = layers.UpSampling2D()(P4)
-    P3 = layers.Add()([P4_U, P3])
-    P3 = layers.Conv2D(num_channels, kernel_size=3, strides=1, padding='same', name='BiFPN_{}_U_P3'.format(id))(P3)
-    P4 = layers.Conv2D(num_channels, kernel_size=3, strides=1, padding='same', name='BiFPN_{}_U_P4'.format(id))(P4)
-    P5 = layers.Conv2D(num_channels, kernel_size=3, strides=1, padding='same', name='BiFPN_{}_U_P5'.format(id))(P5)
-    P6 = layers.Conv2D(num_channels, kernel_size=3, strides=1, padding='same', name='BiFPN_{}_U_P6'.format(id))(P6)
-    P7 = layers.Conv2D(num_channels, kernel_size=3, strides=1, padding='same', name='BiFPN_{}_U_P7'.format(id))(P7)
+    P7_U = layers.UpSampling2D()(P7_in)
+    P6_td = layers.Add()([P7_U, P6_in])
+    P6_td = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_U_P6'.format(id))(P6_td)
+    P6_U = layers.UpSampling2D()(P6_td)
+    P5_td = layers.Add()([P6_U, P5_in])
+    P5_td = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_U_P5'.format(id))(P5_td)
+    P5_U = layers.UpSampling2D()(P5_td)
+    P4_td = layers.Add()([P5_U, P4_in])
+    P4_td = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_U_P4'.format(id))(P4_td)
+    P4_U = layers.UpSampling2D()(P4_td)
+    P3_out = layers.Add()([P4_U, P3_in])
+    P3_out = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_U_P3'.format(id))(P3_out)
     # downsample
-    P3_D = layers.MaxPooling2D(strides=(2, 2))(P3)
-    P4 = layers.Add()([P3_D, P4])
-    P4_D = layers.MaxPooling2D(strides=(2, 2))(P4)
-    P5 = layers.Add()([P4_D, P5])
-    P5_D = layers.MaxPooling2D(strides=(2, 2))(P5)
-    P6 = layers.Add()([P5_D, P6])
-    P6_D = layers.MaxPooling2D(strides=(2, 2))(P6)
-    P7 = layers.Add()([P6_D, P7])
-    P3 = layers.Conv2D(num_channels, kernel_size=3, strides=1, padding='same', name='BiFPN_{}_D_P3'.format(id))(P3)
-    P4 = layers.Conv2D(num_channels, kernel_size=3, strides=1, padding='same', name='BiFPN_{}_D_P4'.format(id))(P4)
-    P5 = layers.Conv2D(num_channels, kernel_size=3, strides=1, padding='same', name='BiFPN_{}_D_P5'.format(id))(P5)
-    P6 = layers.Conv2D(num_channels, kernel_size=3, strides=1, padding='same', name='BiFPN_{}_D_P6'.format(id))(P6)
-    P7 = layers.Conv2D(num_channels, kernel_size=3, strides=1, padding='same', name='BiFPN_{}_D_P7'.format(id))(P7)
+    P3_D = layers.MaxPooling2D(strides=(2, 2))(P3_out)
+    P4_out = layers.Add()([P3_D, P4_td, P4_in])
+    P4_out = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_D_P4'.format(id))(P4_out)
+    P4_D = layers.MaxPooling2D(strides=(2, 2))(P4_out)
+    P5_out = layers.Add()([P4_D, P5_td, P5_in])
+    P5_out = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_D_P5'.format(id))(P5_out)
+    P5_D = layers.MaxPooling2D(strides=(2, 2))(P5_out)
+    P6_out = layers.Add()([P5_D, P6_td, P6_in])
+    P6_out = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_D_P6'.format(id))(P6_out)
+    P6_D = layers.MaxPooling2D(strides=(2, 2))(P6_out)
+    P7_out = layers.Add()([P6_D, P7_in])
+    P7_out = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_D_P7'.format(id))(P7_out)
 
-    return P3, P4, P5, P6, P7
+    return P3_out, P4_out, P5_out, P6_out, P7_out
 
 
 def build_regress_head(width, depth, num_anchors=9):
@@ -168,9 +186,6 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
     model, prediction_model = efficientdet(phi=0, num_classes=20)
-    model.layers[1].trainable = False
-    # for layer in model.layers[1].layers:
-    #     layer.trainable = False
     for i, layer in enumerate(model.layers):
         print(i, '\t', layer, '\t\t', layer.name, '\t', layer.trainable)
         if layer.__class__.__name__ == 'Model':

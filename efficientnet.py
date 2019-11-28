@@ -389,12 +389,10 @@ def EfficientNet(width_coefficient,
                       name='stem_conv')(x)
     x = layers.BatchNormalization(axis=bn_axis, name='stem_bn')(x)
     x = layers.Activation(activation, name='stem_activation')(x)
-    features.append(x)
     # Build blocks
     num_blocks_total = sum(block_args.num_repeat for block_args in blocks_args)
     block_num = 0
     for idx, block_args in enumerate(blocks_args):
-        this_strides = block_args.strides
         assert block_args.num_repeat > 0
         # Update block input and output filters based on depth multiplier.
         block_args = block_args._replace(
@@ -427,7 +425,9 @@ def EfficientNet(width_coefficient,
                                   drop_rate=drop_rate,
                                   prefix=block_prefix)
                 block_num += 1
-        if this_strides[0] == 2:
+        if idx < len(blocks_args) - 1 and blocks_args[idx + 1].strides[0] == 2:
+            features.append(x)
+        elif idx == len(blocks_args) - 1:
             features.append(x)
     # Build top
     x = layers.Conv2D(round_filters(1280, width_coefficient, depth_divisor), 1,
