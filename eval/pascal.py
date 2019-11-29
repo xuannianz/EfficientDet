@@ -14,7 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import keras
+#import keras
+from tensorflow import keras
 from eval.common import evaluate
 
 
@@ -59,6 +60,12 @@ class Evaluate(keras.callbacks.Callback):
         self.active_model = model
 
         super(Evaluate, self).__init__()
+
+    def on_train_batch_begin(self, batch, logs=None):
+        pass
+
+    def on_train_batch_end(self, batch, logs=None):
+        pass
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}

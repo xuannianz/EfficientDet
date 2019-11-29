@@ -124,6 +124,9 @@ class Evaluate(keras.callbacks.Callback):
 
         super(Evaluate, self).__init__()
 
+    def on_train_batch_begin(self),
+        pass
+
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
 
