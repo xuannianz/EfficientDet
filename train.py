@@ -309,7 +309,8 @@ def main(args=None):
 
     # freeze backbone layers
     if args.freeze_backbone:
-        for i in range(1, 227):
+        # 227, 329, 329, 374, 464, 566, 656
+        for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
             model.layers[i].trainable = False
 
     # compile model

@@ -139,6 +139,7 @@ def preprocess_input(x, **kwargs):
 
 def get_swish(**kwargs):
     backend, layers, models, keras_utils = get_submodules_from_kwargs(kwargs)
+
     def swish(x):
         """Swish activation function: x * sigmoid(x).
         Reference: [Searching for Activation Functions](https://arxiv.org/abs/1710.05941)
@@ -153,7 +154,8 @@ def get_swish(**kwargs):
                 pass
 
         return x * backend.sigmoid(x)
-    return  swish
+
+    return swish
 
 
 def get_dropout(**kwargs):
@@ -429,56 +431,7 @@ def EfficientNet(width_coefficient,
             features.append(x)
         elif idx == len(blocks_args) - 1:
             features.append(x)
-    # Build top
-    x = layers.Conv2D(round_filters(1280, width_coefficient, depth_divisor), 1,
-                      padding='same',
-                      use_bias=False,
-                      kernel_initializer=CONV_KERNEL_INITIALIZER,
-                      name='top_conv')(x)
-    x = layers.BatchNormalization(axis=bn_axis, name='top_bn')(x)
-    x = layers.Activation(activation, name='top_activation')(x)
-    if include_top:
-        x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-        if dropout_rate and dropout_rate > 0:
-            x = layers.Dropout(dropout_rate, name='top_dropout')(x)
-        x = layers.Dense(classes,
-                         activation='softmax',
-                         kernel_initializer=DENSE_KERNEL_INITIALIZER,
-                         name='probs')(x)
-    else:
-        if pooling == 'avg':
-            x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-        elif pooling == 'max':
-            x = layers.GlobalMaxPooling2D(name='max_pool')(x)
-
-    # Ensure that the model takes into account
-    # any potential predecessors of `input_tensor`.
-    if input_tensor is not None:
-        inputs = keras_utils.get_source_inputs(input_tensor)
-    else:
-        inputs = img_input
-
-    # Create model.
     return features
-    # model = models.Model(inputs, features, name=model_name)
-
-    # Load weights.
-    if weights == 'imagenet':
-        if include_top:
-            file_name = model_name + '_weights_tf_dim_ordering_tf_kernels_autoaugment.h5'
-            file_hash = WEIGHTS_HASHES[model_name][0]
-        else:
-            file_name = model_name + '_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'
-            file_hash = WEIGHTS_HASHES[model_name][1]
-        weights_path = keras_utils.get_file(file_name,
-                                            BASE_WEIGHTS_PATH + file_name,
-                                            cache_subdir='models',
-                                            file_hash=file_hash)
-        model.load_weights(weights_path, by_name=True)
-    elif weights is not None:
-        model.load_weights(weights, by_name=True)
-
-    return model
 
 
 def EfficientNetB0(include_top=True,
