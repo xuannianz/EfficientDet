@@ -16,6 +16,7 @@ from layers import ClipBoxes, RegressBoxes, FilterDetections
 from initializers import PriorProbability
 
 w_bifpns = [64, 88, 112, 160, 224, 288, 384]
+image_sizes = [512, 640, 768, 896, 1024, 1280, 1408]
 backbones = [EfficientNetB0, EfficientNetB1, EfficientNetB2,
              EfficientNetB3, EfficientNetB4, EfficientNetB5, EfficientNetB6]
 
@@ -144,7 +145,7 @@ def build_class_head(width, depth, num_classes=20, num_anchors=9):
 
 def efficientdet(phi, num_classes=20):
     assert phi in range(7)
-    input_size = 512 + phi * 128
+    input_size = image_sizes[phi]
     input_shape = (input_size, input_size, 3)
     # input_shape = (None, None, 3)
     image_input = layers.Input(input_shape)
@@ -164,7 +165,7 @@ def efficientdet(phi, num_classes=20):
     classification = [class_head(feature) for feature in features]
     classification = layers.Concatenate(axis=1, name='classification')(classification)
 
-    model = models.Model(inputs=[image_input], outputs=[regression, classification], name='efficientnet')
+    model = models.Model(inputs=[image_input], outputs=[regression, classification], name='efficientdet')
 
     # apply predicted regression to anchors
     # anchors = tf.tile(tf.expand_dims(tf.constant(anchors), axis=0), (tf.shape(regression)[0], 1, 1))
@@ -176,7 +177,7 @@ def efficientdet(phi, num_classes=20):
     detections = FilterDetections(
         name='filtered_detections'
     )([boxes, classification])
-    prediction_model = models.Model(inputs=[image_input, anchors_input], outputs=detections, name='efficientnet_p')
+    prediction_model = models.Model(inputs=[image_input, anchors_input], outputs=detections, name='efficientdet_p')
     return model, prediction_model
 
 
@@ -185,7 +186,7 @@ if __name__ == '__main__':
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-    model, prediction_model = efficientdet(phi=0, num_classes=20)
+    model, prediction_model = efficientdet(phi=6, num_classes=20)
     for i, layer in enumerate(model.layers):
         print(i, '\t', layer, '\t\t', layer.name, '\t', layer.trainable)
         if layer.__class__.__name__ == 'Model':
