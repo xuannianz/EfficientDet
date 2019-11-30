@@ -5,6 +5,56 @@ import tensorflow as tf
 import numpy as np
 
 
+class BatchNormalization(keras.layers.BatchNormalization):
+    """
+    Identical to keras.layers.BatchNormalization, but adds the option to freeze parameters.
+    """
+
+    def __init__(self, freeze, *args, **kwargs):
+        self.freeze = freeze
+        super(BatchNormalization, self).__init__(*args, **kwargs)
+
+        # set to non-trainable if freeze is true
+        self.trainable = not self.freeze
+
+    def call(self, *args, **kwargs):
+        # return super.call, but set training
+        return super(BatchNormalization, self).call(training=(not self.freeze), *args, **kwargs)
+
+    def get_config(self):
+        config = super(BatchNormalization, self).get_config()
+        config.update({'freeze': self.freeze})
+        return config
+
+
+class wBiFPNAdd(keras.layers.Layer):
+    def __init__(self, epsilon=1e-4, **kwargs):
+        super(wBiFPNAdd, self).__init__(**kwargs)
+        self.epsilon = epsilon
+
+    def build(self, input_shape):
+        num_in = len(input_shape)
+        self.w = self.add_weight(shape=(num_in,),
+                                 initializer=keras.initializers.constant(1 / num_in),
+                                 trainable=True,
+                                 dtype=tf.float32)
+
+    def call(self, inputs, **kwargs):
+        w = keras.activations.relu(self.w)
+        x = tf.reduce_sum([w[i] * inputs[i] for i in range(len(inputs))], axis=0)
+        x = x / (tf.reduce_sum(w) + self.epsilon)
+        return x
+
+    def compute_output_shape(self, input_shape):
+        return input_shape[0]
+
+    def get_config(self):
+        config = super(wBiFPNAdd, self).get_config()
+        config.update({
+            'epsilon': self.epsilon
+        })
+
+
 def bbox_transform_inv(boxes, deltas, mean=None, std=None):
     """
     Applies deltas (usually regression results) to boxes (usually anchors).
@@ -303,10 +353,10 @@ class FilterDetections(keras.layers.Layer):
             [filtered_boxes.shape, filtered_scores.shape, filtered_labels.shape, filtered_other[0].shape, filtered_other[1].shape, ...]
         """
         return [
-                   (input_shape[0][0], self.max_detections, 4),
-                   (input_shape[1][0], self.max_detections),
-                   (input_shape[1][0], self.max_detections),
-               ]
+            (input_shape[0][0], self.max_detections, 4),
+            (input_shape[1][0], self.max_detections),
+            (input_shape[1][0], self.max_detections),
+        ]
 
     def compute_mask(self, inputs, mask=None):
         """

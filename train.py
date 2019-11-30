@@ -244,6 +244,7 @@ def parse_args(args):
 
     parser.add_argument('--snapshot', help='Resume training from a snapshot.')
     parser.add_argument('--freeze-backbone', help='Freeze training of backbone layers.', action='store_true')
+    parser.add_argument('--weighted-bifpn', help='Use weighted BiFPN', action='store_true')
 
     parser.add_argument('--batch-size', help='Size of the batches.', default=1, type=int)
     parser.add_argument('--phi', help='Hyper parameter phi', default=0, type=int, choices=(0, 1, 2, 3, 4, 5, 6))
@@ -290,7 +291,7 @@ def main(args=None):
     train_generator, validation_generator = create_generators(args)
 
     num_classes = train_generator.num_classes()
-    model, prediction_model = efficientdet(args.phi, num_classes=num_classes)
+    model, prediction_model = efficientdet(args.phi, num_classes=num_classes, weighted_bifpn=args.weighted_bifpn)
 
     # load pretrained weights
     if args.snapshot:
