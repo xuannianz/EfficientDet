@@ -112,11 +112,11 @@ if __name__ == "__main__":
 
     ## Arguments
     parser = argparse.ArgumentParser(description='Perform Efficientdet detections on an image')
-    parser.add_argument("--model", type=str, help="model file to use")
+    parser.add_argument("--model", type=str, help="model file to use", required=True)
     parser.add_argument("--phi", type=int, choices=[0,1,2,3,4,5,6], help="phi of te model", default=0)
     parser.add_argument("--threshold", type=float, help="detection threshold", default=0.5)
     parser.add_argument("--max_detection", type=int, help="maximum number of detections", default=100)
-    parser.add_argument("--image", type=str, help="image file to detect on")
+    parser.add_argument("--image", type=str, help="image file to detect on", required=True)
 
     args = parser.parse_args()
 
