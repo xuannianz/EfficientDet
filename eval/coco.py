@@ -126,7 +126,7 @@ class Evaluate(keras.callbacks.Callback):
 
         super(Evaluate, self).__init__()
 
-   def on_epoch_end(self, epoch, logs=None):
+    def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
 
         coco_tag = ['AP @[ IoU=0.50:0.95 | area=   all | maxDets=100 ]',
