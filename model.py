@@ -12,7 +12,7 @@ from tensorflow.keras import models
 from tfkeras import EfficientNetB0, EfficientNetB1, EfficientNetB2
 from tfkeras import EfficientNetB3, EfficientNetB4, EfficientNetB5, EfficientNetB6
 
-from layers import ClipBoxes, RegressBoxes, FilterDetections
+from layers import ClipBoxes, RegressBoxes, FilterDetections, wBiFPNAdd
 from initializers import PriorProbability
 
 w_bifpns = [64, 88, 112, 160, 224, 288, 384]
@@ -83,6 +83,52 @@ def build_BiFPN(features, num_channels, id):
     return P3_out, P4_out, P5_out, P6_out, P7_out
 
 
+def build_wBiFPN(features, num_channels, id):
+    if id == 0:
+        _, _, C3, C4, C5 = features
+        P3_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P3'.format(id))(C3)
+        P4_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P4'.format(id))(C4)
+        P5_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P5'.format(id))(C5)
+        P6_in = ConvBlock(num_channels, kernel_size=3, strides=2, name='BiFPN_{}_P6'.format(id))(C5)
+        P7_in = ConvBlock(num_channels, kernel_size=3, strides=2, name='BiFPN_{}_P7'.format(id))(P6_in)
+    else:
+        P3_in, P4_in, P5_in, P6_in, P7_in = features
+        P3_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P3'.format(id))(P3_in)
+        P4_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P4'.format(id))(P4_in)
+        P5_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P5'.format(id))(P5_in)
+        P6_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P6'.format(id))(P6_in)
+        P7_in = ConvBlock(num_channels, kernel_size=1, strides=1, name='BiFPN_{}_P7'.format(id))(P7_in)
+
+    # upsample
+    P7_U = layers.UpSampling2D()(P7_in)
+    P6_td = wBiFPNAdd()([P7_U, P6_in])
+    P6_td = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_U_P6'.format(id))(P6_td)
+    P6_U = layers.UpSampling2D()(P6_td)
+    P5_td = wBiFPNAdd()([P6_U, P5_in])
+    P5_td = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_U_P5'.format(id))(P5_td)
+    P5_U = layers.UpSampling2D()(P5_td)
+    P4_td = wBiFPNAdd()([P5_U, P4_in])
+    P4_td = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_U_P4'.format(id))(P4_td)
+    P4_U = layers.UpSampling2D()(P4_td)
+    P3_out = wBiFPNAdd()([P4_U, P3_in])
+    P3_out = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_U_P3'.format(id))(P3_out)
+    # downsample
+    P3_D = layers.MaxPooling2D(strides=(2, 2))(P3_out)
+    P4_out = wBiFPNAdd()([P3_D, P4_td, P4_in])
+    P4_out = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_D_P4'.format(id))(P4_out)
+    P4_D = layers.MaxPooling2D(strides=(2, 2))(P4_out)
+    P5_out = wBiFPNAdd()([P4_D, P5_td, P5_in])
+    P5_out = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_D_P5'.format(id))(P5_out)
+    P5_D = layers.MaxPooling2D(strides=(2, 2))(P5_out)
+    P6_out = wBiFPNAdd()([P5_D, P6_td, P6_in])
+    P6_out = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_D_P6'.format(id))(P6_out)
+    P6_D = layers.MaxPooling2D(strides=(2, 2))(P6_out)
+    P7_out = wBiFPNAdd()([P6_D, P7_in])
+    P7_out = DepthwiseConvBlock(kernel_size=3, strides=1, name='BiFPN_{}_D_P7'.format(id))(P7_out)
+
+    return P3_out, P4_out, P5_out, P6_out, P7_out
+
+
 def build_regress_head(width, depth, num_anchors=9):
     options = {
         'kernel_size': 3,
@@ -143,7 +189,7 @@ def build_class_head(width, depth, num_classes=20, num_anchors=9):
     return models.Model(inputs=inputs, outputs=outputs, name='class_head')
 
 
-def efficientdet(phi, num_classes=20):
+def efficientdet(phi, num_classes=20, weighted_bifpn=False):
     assert phi in range(7)
     input_size = image_sizes[phi]
     input_shape = (input_size, input_size, 3)
@@ -156,8 +202,12 @@ def efficientdet(phi, num_classes=20):
     backbone_cls = backbones[phi]
     # features = backbone_cls(include_top=False, input_shape=input_shape, weights=weights)(image_input)
     features = backbone_cls(input_tensor=image_input)
-    for i in range(d_bifpn):
-        features = build_BiFPN(features, w_bifpn, i)
+    if weighted_bifpn:
+        for i in range(d_bifpn):
+            features = build_wBiFPN(features, w_bifpn, i)
+    else:
+        for i in range(d_bifpn):
+            features = build_BiFPN(features, w_bifpn, i)
     regress_head = build_regress_head(w_head, d_head)
     class_head = build_class_head(w_head, d_head, num_classes=num_classes)
     regression = [regress_head(feature) for feature in features]

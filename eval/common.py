@@ -276,26 +276,26 @@ if __name__ == '__main__':
     from model import efficientdet
     import os
 
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
     common_args = {
         'batch_size': 1,
         'phi': 0,
     }
     test_generator = PascalVocGenerator(
-        'datasets/voc_test/VOC2007',
+        'datasets/VOC2007',
         'test',
         shuffle_groups=False,
         skip_truncated=False,
         skip_difficult=True,
         **common_args
     )
-    model_path = 'checkpoints/2019-11-27/pascal_01_1451.1366_880.4981.h5'
+    model_path = 'checkpoints/2019-11-30/pascal_175_0.8271_1.3871.h5'
     input_shape = (test_generator.image_size, test_generator.image_size)
     anchors = test_generator.anchors
     num_classes = test_generator.num_classes()
     model, prediction_model = efficientdet(phi=0, num_classes=num_classes)
-    prediction_model.load_weights(model_path, by_name=True, skip_mismatch=True)
+    prediction_model.load_weights(model_path, by_name=True)
     average_precisions = evaluate(test_generator, prediction_model, visualize=False)
     # compute per class average precision
     total_instances = []
