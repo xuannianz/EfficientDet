@@ -4,6 +4,45 @@ import cv2
 import numpy as np
 from utils.anchors import anchors_for_shape, anchor_targets_bbox
 
+import time
+
+def generate_voc_classes():
+
+    voc_classes = {
+            0 : 'aeroplane',
+            1 : 'bicycle',
+            2 :'bird',
+            3 : 'boat',
+            4 : 'bottle',
+            5 : 'bus',
+            6 : 'car',
+            7 : 'cat',
+            8 : 'chair',
+            9 : 'cow',
+            10 : 'diningtable',
+            11 : 'dog',
+            12 : 'horse',
+            13 : 'motorbike',
+            14 : 'person',
+            15 : 'pottedplant',
+            16 : 'sheep',
+            17 : 'sofa',
+            18 : 'train',
+            19 : 'tvmonitor'
+            }
+    return voc_classes
+  
+def generate_class_colors(num_classes):
+    color_dict = dict()
+    colors = []
+    for index, i in enumerate(range(num_classes)):
+        color_dict[index] = tuple(np.random.choice(range(256), size=3))
+
+    return color_dict
+
+def generate_resolutions():
+    return [512, 640, 768, 896, 1024, 1280, 1408]
+    
 def preprocess_image(image, image_size=512):
         image_height, image_width = image.shape[:2]
         if image_height > image_width:
@@ -31,23 +70,8 @@ def preprocess_image(image, image_size=512):
         return new_image, scale, offset_h, offset_w
 
 
-
-if __name__ == "__main__":
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-    model_path = 'model.h5'
-    phi = 0
-    num_classes=20
-    score_threshold = 0.5
-    max_detections = 100
-    image = cv2.imread("image.jpg")
-
-    anchors = anchors_for_shape((512, 512))
-
-    model, prediction_model = efficientdet(phi=phi, num_classes=num_classes)
-    prediction_model.load_weights(model_path, by_name=True)
-
+def detect_on_frame(image, prediction_model, anchors, score_threshold=0.5, max_detections=100):
     h, w = image.shape[:2]
-    draw_image = image.copy()
     image, scale, offset_h, offset_w = preprocess_image(image)
 
     # time to detect
@@ -81,32 +105,36 @@ if __name__ == "__main__":
     # (n, 6)
     detections = np.concatenate(
         [image_boxes, np.expand_dims(image_scores, axis=1), np.expand_dims(image_labels, axis=1)], axis=1)
-    print(detections)
+    return detections
 
 
+if __name__ == "__main__":
+    model_path = 'model.h5'
+    phi = 0
+    object_classes = generate_voc_classes()
+    resolutions = generate_resolutions()
+    score_threshold = 0.5
+    max_detections = 100
+    image = cv2.imread("image.jpg")
 
-## Visualise
+    num_classes=len(object_classes)
+    colors = generate_class_colors(num_classes)
+    anchors = anchors_for_shape((resolutions[phi], resolutions[phi]))
+
+    model, prediction_model = efficientdet(phi=phi, num_classes=num_classes)
+    prediction_model.load_weights(model_path, by_name=True)
+
+    draw_image = image.copy()
+    start_time = time.time()
+    detections = detect_on_frame(image, prediction_model, anchors, score_threshold, max_detections)
+    print("Prediction speed {}".format(1/(time.time() - start_time)))
+
+    ## Visualise
     for detection in detections:
-        print("------------------")
-        print(detection)
         label = int(detection[5])
-        if label != 14:
-            print("not person")
-            continue
-
-        print((detection[0], detection[1]))
-        print((detection[2], detection[3]))
-        cv2.rectangle(draw_image, (int(detection[0]), int(detection[1])), (int(detection[2]), int(detection[3])), (255,255,255), 3)
-        print("------------------")
+        color = colors[label]
+        cv2.rectangle(draw_image, (int(detection[0]), int(detection[1])), (int(detection[2]), int(detection[3])), (int(color[0]), int(color[1]), int(color[2])), 3)
 
     cv2.imshow("results", draw_image)
     cv2.waitKey(0)
-    #draw_detections(src_image, detections[:5, :4], detections[:5, 4], detections[:5, 5].astype(np.int32),
-    #    label_to_name=generator.label_to_name,
-    #    score_threshold=score_threshold)
-
-    # cv2.imwrite(os.path.join(save_path, '{}.png'.format(i)), raw_image)
-    #cv2.namedWindow('{}'.format(i), cv2.WINDOW_NORMAL)
-    #cv2.imshow('{}'.format(i), src_image)
-    #cv2.waitKey(0)
 
