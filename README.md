@@ -17,3 +17,6 @@ This project is released under the Apache License. Please take their licenses in
 ## Evaluate
 * `python3 eval/common.py` to evaluate by specifying model path there.
 
+## Detect
+A script is avalable to perform detections with a (self) trained model. It could be used as follows:
+`python3 detector.py --model model.h5 --phi=0 --threshold=0.5 --image image.jpg`

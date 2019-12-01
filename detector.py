@@ -3,7 +3,7 @@ import os
 import cv2
 import numpy as np
 from utils.anchors import anchors_for_shape, anchor_targets_bbox
-
+import argparse
 import time
 
 def generate_voc_classes():
@@ -109,18 +109,31 @@ def detect_on_frame(image, prediction_model, anchors, score_threshold=0.5, max_d
 
 
 if __name__ == "__main__":
-    model_path = 'model.h5'
-    phi = 0
+
+    ## Arguments
+    parser = argparse.ArgumentParser(description='Perform Efficientdet detections on an image')
+    parser.add_argument("--model", type=str, help="model file to use")
+    parser.add_argument("--phi", type=int, choices=[0,1,2,3,4,5,6], help="phi of te model", default=0)
+    parser.add_argument("--threshold", type=float, help="detection threshold", default=0.5)
+    parser.add_argument("--max_detection", type=int, help="maximum number of detections", default=100)
+    parser.add_argument("--image", type=str, help="image file to detect on")
+
+    args = parser.parse_args()
+
+    ## initialise configuration
+    model_path = args.model
+    phi = int(args.phi)
     object_classes = generate_voc_classes()
     resolutions = generate_resolutions()
-    score_threshold = 0.5
-    max_detections = 100
-    image = cv2.imread("image.jpg")
+    score_threshold = args.threshold
+    max_detections = args.max_detection
 
     num_classes=len(object_classes)
     colors = generate_class_colors(num_classes)
     anchors = anchors_for_shape((resolutions[phi], resolutions[phi]))
 
+    ## Start detection process
+    image = cv2.imread(args.image)
     model, prediction_model = efficientdet(phi=phi, num_classes=num_classes)
     prediction_model.load_weights(model_path, by_name=True)
 
@@ -129,7 +142,7 @@ if __name__ == "__main__":
     detections = detect_on_frame(image, prediction_model, anchors, score_threshold, max_detections)
     print("Prediction speed {}".format(1/(time.time() - start_time)))
 
-    ## Visualise
+    ## Visualise detections
     for detection in detections:
         label = int(detection[5])
         color = colors[label]
