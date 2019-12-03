@@ -39,11 +39,13 @@ from keras_applications.imagenet_utils import decode_predictions
 from keras_applications.imagenet_utils import preprocess_input as _preprocess_input
 
 from utils import get_submodules_from_kwargs
+from layers import BatchNormalization
 
 backend = None
 layers = None
 models = None
 keras_utils = None
+
 
 BASE_WEIGHTS_PATH = (
     'https://github.com/Callidior/keras-applications/'
@@ -199,7 +201,7 @@ def round_repeats(repeats, depth_coefficient):
     return int(math.ceil(depth_coefficient * repeats))
 
 
-def mb_conv_block(inputs, block_args, activation, drop_rate=None, prefix='', ):
+def mb_conv_block(inputs, block_args, activation, drop_rate=None, prefix='', freeze_bn=False):
     """Mobile Inverted Residual Bottleneck."""
 
     has_se = (block_args.se_ratio is not None) and (0 < block_args.se_ratio <= 1)
@@ -221,7 +223,7 @@ def mb_conv_block(inputs, block_args, activation, drop_rate=None, prefix='', ):
                           use_bias=False,
                           kernel_initializer=CONV_KERNEL_INITIALIZER,
                           name=prefix + 'expand_conv')(inputs)
-        x = layers.BatchNormalization(axis=bn_axis, name=prefix + 'expand_bn')(x)
+        x = BatchNormalization(freeze=freeze_bn, axis=bn_axis, name=prefix + 'expand_bn')(x)
         x = layers.Activation(activation, name=prefix + 'expand_activation')(x)
     else:
         x = inputs
@@ -233,7 +235,7 @@ def mb_conv_block(inputs, block_args, activation, drop_rate=None, prefix='', ):
                                use_bias=False,
                                depthwise_initializer=CONV_KERNEL_INITIALIZER,
                                name=prefix + 'dwconv')(x)
-    x = layers.BatchNormalization(axis=bn_axis, name=prefix + 'bn')(x)
+    x = BatchNormalization(freeze=freeze_bn, axis=bn_axis, name=prefix + 'bn')(x)
     x = layers.Activation(activation, name=prefix + 'activation')(x)
 
     # Squeeze and Excitation phase
@@ -273,7 +275,7 @@ def mb_conv_block(inputs, block_args, activation, drop_rate=None, prefix='', ):
                       use_bias=False,
                       kernel_initializer=CONV_KERNEL_INITIALIZER,
                       name=prefix + 'project_conv')(x)
-    x = layers.BatchNormalization(axis=bn_axis, name=prefix + 'project_bn')(x)
+    x = BatchNormalization(freeze=freeze_bn, axis=bn_axis, name=prefix + 'project_bn')(x)
     if block_args.id_skip and all(
             s == 1 for s in block_args.strides
     ) and block_args.input_filters == block_args.output_filters:
@@ -300,6 +302,7 @@ def EfficientNet(width_coefficient,
                  input_shape=None,
                  pooling=None,
                  classes=1000,
+                 freeze_bn=False,
                  **kwargs):
     """Instantiates the EfficientNet architecture using given scaling coefficients.
     Optionally loads weights pre-trained on ImageNet.
@@ -389,7 +392,7 @@ def EfficientNet(width_coefficient,
                       use_bias=False,
                       kernel_initializer=CONV_KERNEL_INITIALIZER,
                       name='stem_conv')(x)
-    x = layers.BatchNormalization(axis=bn_axis, name='stem_bn')(x)
+    x = BatchNormalization(freeze=freeze_bn, axis=bn_axis, name='stem_bn')(x)
     x = layers.Activation(activation, name='stem_activation')(x)
     # Build blocks
     num_blocks_total = sum(block_args.num_repeat for block_args in blocks_args)
@@ -409,7 +412,9 @@ def EfficientNet(width_coefficient,
         x = mb_conv_block(x, block_args,
                           activation=activation,
                           drop_rate=drop_rate,
-                          prefix='block{}a_'.format(idx + 1))
+                          prefix='block{}a_'.format(idx + 1),
+                          freeze_bn=freeze_bn
+                          )
         block_num += 1
         if block_args.num_repeat > 1:
             # pylint: disable=protected-access
@@ -425,7 +430,9 @@ def EfficientNet(width_coefficient,
                 x = mb_conv_block(x, block_args,
                                   activation=activation,
                                   drop_rate=drop_rate,
-                                  prefix=block_prefix)
+                                  prefix=block_prefix,
+                                  freeze_bn=freeze_bn
+                                  )
                 block_num += 1
         if idx < len(blocks_args) - 1 and blocks_args[idx + 1].strides[0] == 2:
             features.append(x)

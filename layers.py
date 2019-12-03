@@ -17,9 +17,12 @@ class BatchNormalization(keras.layers.BatchNormalization):
         # set to non-trainable if freeze is true
         self.trainable = not self.freeze
 
-    def call(self, *args, **kwargs):
+    def call(self, inputs, training=None, **kwargs):
         # return super.call, but set training
-        return super(BatchNormalization, self).call(training=(not self.freeze), *args, **kwargs)
+        if not training:
+            return super(BatchNormalization, self).call(inputs, training=False)
+        else:
+            return super(BatchNormalization, self).call(inputs, training=(not self.freeze))
 
     def get_config(self):
         config = super(BatchNormalization, self).get_config()

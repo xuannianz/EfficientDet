@@ -12,8 +12,19 @@ This project is released under the Apache License. Please take their licenses in
 * Append VOC2007 train.txt to VOC2012 trainval.txt.
 * Overwrite VOC2012 val.txt by VOC2007 val.txt.
 ### train
-* STEP1: `python3 train.py --snapshot imagenet --phi {0, 1, 2, 3, 4, 5, 6} --freeze-backbone --gpu 0 --random-transform --compute-val-loss --batch-size 32 --steps 1000 pascal datasets/VOC2012` to start training. The init lr is 1e-4.
-* STEP2: `python3 train.py --snapshot xxx.h5 --phi {0, 1, 2, 3, 4, 5, 6} --gpu 0 --random-transform --compute-val-loss --batch-size 32 --steps 1000 pascal datasets/VOC2012` to start training when val mAP can not increase during STEP1. The init lr is 1e-5 and decays to 1e-6 when loss stops dropping down.
+* STEP1: `python3 train.py --snapshot imagenet --phi {0, 1, 2, 3, 4, 5, 6} --gpu 0 --random-transform --compute-val-loss --freeze-backbone --batch-size 32 --steps 1000 pascal datasets/VOC2012` to start training. The init lr is 1e-3.
+* STEP2: `python3 train.py --snapshot xxx.h5 --phi {0, 1, 2, 3, 4, 5, 6} --gpu 0 --random-transform --compute-val-loss --freeze-bn --batch-size 4 --steps 10000 pascal datasets/VOC2012` to start training when val mAP can not increase during STEP1. The init lr is 1e-4 and decays to 1e-5 when loss stops dropping down.
 ## Evaluate
 * `python3 eval/common.py` to evaluate by specifying model path there.
+* The best evaluation results (score_threshold=0.01, mAP<sub>50</sub>) on VOC2007 test are: 
 
+| phi | 0 | 1 |
+| ---- | ---- | ---- |
+| w/o weighted |  | [0.8029](https://drive.google.com/open?id=1-QkMq56w4dZOTQUnbitF53NKEiNF9F_Q) |
+| w/ weighted | [0.7661](https://drive.google.com/open?id=1lM5C5csv-5CBWQwgnVK7vcCFRkfjDELk) |  |
+## Test
+`python3 inference.py` to test your image by specifying image path and model path there. 
+
+![image1](test/000004.jpg) 
+![image2](test/000010.jpg)
+![image3](test/000014.jpg)
