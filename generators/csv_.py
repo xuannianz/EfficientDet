@@ -16,8 +16,7 @@ limitations under the License.
 """
 
 from generators.common import Generator
-from utils.image import read_image_bgr
-
+import cv2
 import numpy as np
 from PIL import Image
 from six import raise_from
@@ -222,7 +221,9 @@ class CSVGenerator(Generator):
         """
         Load an image at the image_index.
         """
-        return read_image_bgr(self.image_path(image_index))
+        image = cv2.imread(self.image_path(image_index))
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        return image
 
     def load_annotations(self, image_index):
         """
