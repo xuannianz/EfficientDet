@@ -133,7 +133,7 @@ class CocoGenerator(Generator):
         """
         # get ground truth annotations
         annotations_ids = self.coco.getAnnIds(imgIds=self.image_ids[image_index], iscrowd=False)
-        annotations = {'labels': np.empty((0,)), 'bboxes': np.empty((0, 4))}
+        annotations = {'labels': np.empty((0,), dtype=np.float32), 'bboxes': np.empty((0, 4), dtype=np.float32)}
 
         # some images appear to miss annotations (like image with id 257034)
         if len(annotations_ids) == 0:
@@ -156,9 +156,3 @@ class CocoGenerator(Generator):
             ]]], axis=0)
 
         return annotations
-
-
-if __name__ == '__main__':
-    dataset_dir = '/home/adam/.keras/datasets/coco/2017_118_5'
-    generator = CocoGenerator(data_dir=dataset_dir, set_name='test-dev2017')
-    print(generator[0])

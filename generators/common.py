@@ -160,11 +160,11 @@ class Generator(keras.utils.Sequence):
                 ))
                 for k in annotations_group[index].keys():
                     annotations_group[index][k] = np.delete(annotations[k], invalid_indices, axis=0)
-            if annotations['bboxes'].shape[0] == 0:
-                warnings.warn('Image with id {} (shape {}) contains no valid boxes before transform'.format(
-                    group[index],
-                    image.shape,
-                ))
+            # if annotations['bboxes'].shape[0] == 0:
+            #     warnings.warn('Image with id {} (shape {}) contains no valid boxes before transform'.format(
+            #         group[index],
+            #         image.shape,
+            #     ))
         return image_group, annotations_group
 
     def clip_transformed_annotations(self, image_group, annotations_group, group):
@@ -207,14 +207,8 @@ class Generator(keras.utils.Sequence):
                 # cv2.namedWindow('image', cv2.WINDOW_NORMAL)
                 # cv2.imshow('image', image)
                 # cv2.waitKey(0)
-            if annotations_group[index]['bboxes'].shape[0] != 0:
-                filtered_image_group.append(image)
-                filtered_annotations_group.append(annotations_group[index])
-            else:
-                warnings.warn('Image with id {} (shape {}) contains no valid boxes after transform'.format(
-                    group[index],
-                    image.shape,
-                ))
+            filtered_image_group.append(image)
+            filtered_annotations_group.append(annotations_group[index])
 
         return filtered_image_group, filtered_annotations_group
 
@@ -254,8 +248,6 @@ class Generator(keras.utils.Sequence):
         """
         Randomly transforms image and annotation.
         """
-        assert annotations['bboxes'].shape[0] != 0
-
         # randomly transform both image and annotations
         image, boxes = self.misc_effect(image, annotations['bboxes'])
         # Transform the bounding boxes in the annotations.
