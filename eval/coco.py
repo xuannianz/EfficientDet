@@ -58,6 +58,10 @@ def evaluate(generator, model, threshold=0.01):
         boxes[:, :, 2] = np.clip(boxes[:, :, 2], 0, w - 1)
         boxes[:, :, 3] = np.clip(boxes[:, :, 3], 0, h - 1)
 
+        # change to (x, y, w, h) (MS COCO standard)
+        boxes[:, :, 2] -= boxes[:, :, 0]
+        boxes[:, :, 3] -= boxes[:, :, 1]
+
         # select indices which have a score above the threshold
         indices = np.where(scores[0, :] > threshold)[0]
         boxes = boxes[0, indices]
@@ -66,10 +70,6 @@ def evaluate(generator, model, threshold=0.01):
 
         # compute predicted labels and scores
         for box, score, class_id in zip(boxes, scores, class_ids):
-            # scores are sorted, so we can break
-            if score < threshold:
-                break
-
             # append detection for each positively labeled class
             image_result = {
                 'image_id': generator.image_ids[index],
@@ -79,6 +79,8 @@ def evaluate(generator, model, threshold=0.01):
             }
             # append detection to results
             results.append(image_result)
+
+        #     box = np.round(box).astype(np.int32)
         #     class_name = generator.label_to_name(class_id)
         #     ret, baseline = cv2.getTextSize(class_name, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         #     cv2.rectangle(src_image, (box[0], box[1]), (box[0] + box[2], box[1] + box[3]), (0, 255, 0), 1)
@@ -87,6 +89,7 @@ def evaluate(generator, model, threshold=0.01):
         # cv2.namedWindow('image', cv2.WINDOW_NORMAL)
         # cv2.imshow('image', src_image)
         # cv2.waitKey(0)
+
         # append image to list of processed images
         image_ids.append(generator.image_ids[index])
 
