@@ -157,3 +157,31 @@ class Evaluate(keras.callbacks.Callback):
                 summary_value.tag = '{}. {}'.format(index + 1, coco_tag[index])
                 self.tensorboard.writer.add_summary(summary, epoch)
                 logs[coco_tag[index]] = result
+
+
+if __name__ == '__main__':
+    from model import efficientdet
+    import os
+    from generators.coco import CocoGenerator
+
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+
+    phi = 0
+    weighted_bifpn = True
+    common_args = {
+        'batch_size': 1,
+        'phi': phi,
+    }
+
+    test_generator = CocoGenerator(
+        '/home/adam/workspace/datasets/coco',
+        'val2017',
+        shuffle_groups=False,
+        **common_args
+    )
+    model_path = 'checkpoints/2019-12-06/coco_14_1.6369_1.6223.h5'
+    num_classes = test_generator.num_classes()
+    model, prediction_model = efficientdet(phi=phi, num_classes=num_classes, weighted_bifpn=weighted_bifpn,
+                                           score_threshold=0.01)
+    prediction_model.load_weights(model_path, by_name=True)
+    evaluate(test_generator, prediction_model, threshold=0.01)
