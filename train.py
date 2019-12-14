@@ -185,6 +185,24 @@ def create_generators(args):
             )
         else:
             validation_generator = None
+    elif args.dataset_type == 'coco':
+        # import here to prevent unnecessary dependency on cocoapi
+        from generators.coco import CocoGenerator
+        train_generator = CocoGenerator(
+            args.coco_path,
+            'train2017',
+            misc_effect=misc_effect,
+            visual_effect=visual_effect,
+            group_method='random',
+            **common_args
+        )
+
+        validation_generator = CocoGenerator(
+            args.coco_path,
+            'val2017',
+            shuffle_groups=False,
+            **common_args
+        )
     else:
         raise ValueError('Invalid data type received: {}'.format(args.dataset_type))
 
