@@ -56,6 +56,7 @@ class wBiFPNAdd(keras.layers.Layer):
         config.update({
             'epsilon': self.epsilon
         })
+        return config
 
 
 def bbox_transform_inv(boxes, deltas, mean=None, std=None):
