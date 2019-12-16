@@ -14,6 +14,8 @@
 # ==============================================================================
 
 import functools
+import cv2
+import numpy as np
 
 _KERAS_BACKEND = None
 _KERAS_LAYERS = None
@@ -80,3 +82,30 @@ def init_tfkeras_custom_objects():
     }
 
     tfkeras.utils.get_custom_objects().update(custom_objects)
+
+
+def preprocess_image(image, image_size):
+    image_height, image_width = image.shape[:2]
+    if image_height > image_width:
+        scale = image_size / image_height
+        resized_height = image_size
+        resized_width = int(image_width * scale)
+    else:
+        scale = image_size / image_width
+        resized_height = int(image_height * scale)
+        resized_width = image_size
+    image = cv2.resize(image, (resized_width, resized_height))
+    new_image = np.ones((image_size, image_size, 3), dtype=np.float32) * 128.
+    offset_h = (image_size - resized_height) // 2
+    offset_w = (image_size - resized_width) // 2
+    new_image[offset_h:offset_h + resized_height, offset_w:offset_w + resized_width] = image.astype(np.float32)
+    new_image /= 255.
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    new_image[..., 0] -= mean[0]
+    new_image[..., 1] -= mean[1]
+    new_image[..., 2] -= mean[2]
+    new_image[..., 0] /= std[0]
+    new_image[..., 1] /= std[1]
+    new_image[..., 2] /= std[2]
+    return new_image, scale, offset_h, offset_w
