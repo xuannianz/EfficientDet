@@ -37,7 +37,8 @@ class wBiFPNAdd(keras.layers.Layer):
 
     def build(self, input_shape):
         num_in = len(input_shape)
-        self.w = self.add_weight(shape=(num_in,),
+        self.w = self.add_weight(name=self.name,
+                                 shape=(num_in,),
                                  initializer=keras.initializers.constant(1 / num_in),
                                  trainable=True,
                                  dtype=tf.float32)
