@@ -115,12 +115,21 @@ def smooth_l1(sigma=3.0):
             0.5 * sigma_squared * keras.backend.pow(regression_diff[..., :4], 2),
             regression_diff[..., :4] - 0.5 / sigma_squared
         )
+        area1 = 0.5 * regression_target[..., 4:5] * (1 - regression_target[..., 7:8])
+        area2 = 0.5 * regression_target[..., 5:6] * (1 - regression_target[..., 4:5])
+        area3 = 0.5 * regression_target[..., 6:7] * (1 - regression_target[..., 5:6])
+        area4 = 0.5 * regression_target[..., 7:8] * (1 - regression_target[..., 6:7])
+        ratio = (1 - area1 - area2 - area3 - area4)
+        ratio = tf.tile(ratio, (1, 4))
 
-        alpha_regression_loss = tf.where(
+        alpha_regression_loss_part1 = tf.where(
             keras.backend.less(regression_diff[..., 4:8], 1.0 / sigma_squared),
             0.5 * sigma_squared * keras.backend.pow(regression_diff[..., 4:8], 2),
             regression_diff[..., 4:8] - 0.5 / sigma_squared
         )
+        alpha_regression_loss_part2 = keras.backend.binary_crossentropy(regression_target[..., 4:8],
+                                                                        regression[..., 4:8])
+        alpha_regression_loss = tf.where(tf.less(ratio, 0.8), alpha_regression_loss_part1, alpha_regression_loss_part2)
         # compute the normalizer: the number of positive anchors
         normalizer = keras.backend.maximum(1, keras.backend.shape(indices)[0])
         normalizer = keras.backend.cast(normalizer, dtype=keras.backend.floatx())
