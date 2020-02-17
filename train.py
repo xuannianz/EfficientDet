@@ -358,7 +358,7 @@ def main(args=None):
     return model.fit_generator(
         generator=train_generator,
         steps_per_epoch=args.steps,
-        initial_epoch=0,
+        initial_epoch=21,
         epochs=args.epochs,
         verbose=1,
         callbacks=callbacks,

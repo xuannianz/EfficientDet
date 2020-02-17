@@ -59,10 +59,12 @@ def anchor_targets_bbox(
 
     Returns
         labels_batch: batch that contains labels & anchor states (np.array of shape (batch_size, N, num_classes + 1),
-                      where N is the number of anchors for an image and the last column defines the anchor state (-1 for ignore, 0 for bg, 1 for fg).
-        regression_batch: batch that contains bounding-box regression targets for an image & anchor states (np.array of shape (batch_size, N, 4 + 1),
-                      where N is the number of anchors for an image, the first 4 columns define regression targets for (x1, y1, x2, y2) and the
-                      last column defines anchor states (-1 for ignore, 0 for bg, 1 for fg).
+                      where N is the number of anchors for an image and the last column defines the anchor state
+                      (-1 for ignore, 0 for bg, 1 for fg).
+        regression_batch: batch that contains bounding-box regression targets for an image & anchor states
+                      (np.array of shape (batch_size, N, 4 + 1), where N is the number of anchors for an image,
+                      the first 4 columns define regression targets for (x1, y1, x2, y2) and the last column defines
+                      anchor states (-1 for ignore, 0 for bg, 1 for fg).
     """
 
     assert (len(image_group) == len(annotations_group)), "The length of the images and annotations need to be equal."
@@ -73,13 +75,16 @@ def anchor_targets_bbox(
 
     batch_size = len(image_group)
 
-    regression_batch = np.zeros((batch_size, anchors.shape[0], 4 + 1), dtype=keras.backend.floatx())
-    labels_batch = np.zeros((batch_size, anchors.shape[0], num_classes + 1), dtype=keras.backend.floatx())
+    # obb: 4 -> 8
+    regression_batch = np.zeros((batch_size, anchors.shape[0], 8 + 1), dtype=np.float32)
+    labels_batch = np.zeros((batch_size, anchors.shape[0], num_classes + 1), dtype=np.float32)
 
     # compute labels and regression targets
     for index, (image, annotations) in enumerate(zip(image_group, annotations_group)):
         if annotations['bboxes'].shape[0]:
             # obtain indices of gt annotations with the greatest overlap
+            # argmax_overlaps_inds: id of ground truth box has greatest overlap with anchor
+            # (N, ), (N, ), (N, ) N is num_anchors
             positive_indices, ignore_indices, argmax_overlaps_inds = compute_gt_annotations(anchors,
                                                                                             annotations['bboxes'],
                                                                                             negative_overlap,
@@ -94,7 +99,8 @@ def anchor_targets_bbox(
             labels_batch[
                 index, positive_indices, annotations['labels'][argmax_overlaps_inds[positive_indices]].astype(int)] = 1
 
-            regression_batch[index, :, :-1] = bbox_transform(anchors, annotations['bboxes'][argmax_overlaps_inds, :])
+            regression_batch[index, :, :4] = bbox_transform(anchors, annotations['bboxes'][argmax_overlaps_inds, :])
+            regression_batch[index, :, 4:8] = annotations['alphas'][argmax_overlaps_inds, :]
 
         # ignore anchors outside of image
         if image.shape:
@@ -123,17 +129,21 @@ def compute_gt_annotations(
         positive_overlap: IoU overlap or positive anchors (all anchors with overlap > positive_overlap are positive).
 
     Returns
-        positive_indices: indices of positive anchors
-        ignore_indices: indices of ignored anchors
-        argmax_overlaps_inds: ordered overlaps indices
+        positive_indices: indices of positive anchors, (N, )
+        ignore_indices: indices of ignored anchors, (N, )
+        argmax_overlaps_inds: ordered overlaps indices, (N, )
     """
-
+    # (N, K)
     overlaps = compute_overlap(anchors.astype(np.float64), annotations.astype(np.float64))
+    # (N, )
     argmax_overlaps_inds = np.argmax(overlaps, axis=1)
+    # (N, )
     max_overlaps = overlaps[np.arange(overlaps.shape[0]), argmax_overlaps_inds]
 
     # assign "dont care" labels
+    # (N, )
     positive_indices = max_overlaps >= positive_overlap
+    # (N, )
     ignore_indices = (max_overlaps > negative_overlap) & ~positive_indices
 
     return positive_indices, ignore_indices, argmax_overlaps_inds

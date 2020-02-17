@@ -109,3 +109,31 @@ def preprocess_image(image, image_size):
     new_image[..., 1] /= std[1]
     new_image[..., 2] /= std[2]
     return new_image, scale, offset_h, offset_w
+
+
+def rotate_image(image):
+    rotate_degree = np.random.uniform(low=-45, high=45)
+    h, w = image.shape[:2]
+    # Compute the rotation matrix.
+    M = cv2.getRotationMatrix2D(center=(w / 2, h / 2),
+                                angle=rotate_degree,
+                                scale=1)
+
+    # Get the sine and cosine from the rotation matrix.
+    abs_cos_angle = np.abs(M[0, 0])
+    abs_sin_angle = np.abs(M[0, 1])
+
+    # Compute the new bounding dimensions of the image.
+    new_w = int(h * abs_sin_angle + w * abs_cos_angle)
+    new_h = int(h * abs_cos_angle + w * abs_sin_angle)
+
+    # Adjust the rotation matrix to take into account the translation.
+    M[0, 2] += new_w // 2 - w // 2
+    M[1, 2] += new_h // 2 - h // 2
+
+    # Rotate the image.
+    image = cv2.warpAffine(image, M=M, dsize=(new_w, new_h), flags=cv2.INTER_CUBIC,
+                           borderMode=cv2.BORDER_CONSTANT,
+                           borderValue=(128, 128, 128))
+
+    return image

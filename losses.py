@@ -19,7 +19,7 @@ from tensorflow import keras
 import tensorflow as tf
 
 
-def focal(alpha=0.25, gamma=2.0):
+def focal(alpha=0.25, gamma=1.5):
     """
     Create a functor for computing the focal loss.
 
@@ -30,6 +30,7 @@ def focal(alpha=0.25, gamma=2.0):
     Returns
         A functor that computes the focal loss using the alpha and gamma.
     """
+
     def _focal(y_true, y_pred):
         """
         Compute the focal loss given the target tensor and the predicted tensor.
@@ -95,6 +96,7 @@ def smooth_l1(sigma=3.0):
         """
         # separate target and state
         regression = y_pred
+        regression = tf.concat([regression[..., :4], tf.sigmoid(regression[..., 4:8])], axis=-1)
         regression_target = y_true[:, :, :-1]
         anchor_state = y_true[:, :, -1]
 
@@ -108,15 +110,28 @@ def smooth_l1(sigma=3.0):
         #        |x| - 0.5 / sigma / sigma    otherwise
         regression_diff = regression - regression_target
         regression_diff = keras.backend.abs(regression_diff)
-        regression_loss = tf.where(
-            keras.backend.less(regression_diff, 1.0 / sigma_squared),
-            0.5 * sigma_squared * keras.backend.pow(regression_diff, 2),
-            regression_diff - 0.5 / sigma_squared
+        box_regression_loss = tf.where(
+            keras.backend.less(regression_diff[..., :4], 1.0 / sigma_squared),
+            0.5 * sigma_squared * keras.backend.pow(regression_diff[..., :4], 2),
+            regression_diff[..., :4] - 0.5 / sigma_squared
         )
 
+        alpha_regression_loss = tf.where(
+            keras.backend.less(regression_diff[..., 4:8], 1.0 / sigma_squared),
+            0.5 * sigma_squared * keras.backend.pow(regression_diff[..., 4:8], 2),
+            regression_diff[..., 4:8] - 0.5 / sigma_squared
+        )
         # compute the normalizer: the number of positive anchors
         normalizer = keras.backend.maximum(1, keras.backend.shape(indices)[0])
         normalizer = keras.backend.cast(normalizer, dtype=keras.backend.floatx())
-        return keras.backend.sum(regression_loss) / normalizer
+
+        box_regression_loss = tf.reduce_sum(box_regression_loss) / normalizer
+        alpha_regression_loss = tf.reduce_sum(alpha_regression_loss) / normalizer
+        box_regression_loss = tf.Print(box_regression_loss, [box_regression_loss], '\nbox_regression_loss',
+                                       summarize=1000)
+        alpha_regression_loss = tf.Print(alpha_regression_loss, [alpha_regression_loss], '\nalpha_regression_loss',
+                                         summarize=1000)
+
+        return box_regression_loss + alpha_regression_loss
 
     return _smooth_l1

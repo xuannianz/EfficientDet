@@ -22,7 +22,7 @@ from PIL import Image
 from six import raise_from
 import csv
 import sys
-import os.path
+import os.path as osp
 from collections import OrderedDict
 
 
@@ -63,41 +63,46 @@ def _read_classes(csv_reader):
 def _read_annotations(csv_reader, classes):
     """
     Read annotations from the csv_reader.
+    Args:
+        csv_reader: csv reader of args.annotations_path
+        classes: list[str] all the class names read from args.classes_path
+
+    Returns:
+        result: dict, dict is like {image_path: [{'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+                                     'x3': x3, 'y3': y3, 'x4': x4, 'y4': y4, 'class': class_name}]}
+
     """
     result = OrderedDict()
-    for line, row in enumerate(csv_reader):
-        line += 1
-
+    for line, row in enumerate(csv_reader, 1):
         try:
-            img_file, x1, y1, x2, y2, class_name = row[:6]
+            img_file, x1, y1, x2, y2, x3, y3, x4, y4, class_name = row[:10]
+            if img_file not in result:
+                result[img_file] = []
+
+            # If a row contains only an image path, it's an image without annotations.
+            if (x1, y1, x2, y2, x3, y3, x4, y4, class_name) == ('', '', '', '', '', '', '', '', ''):
+                continue
+
+            x1 = _parse(x1, int, 'line {}: malformed x1: {{}}'.format(line))
+            y1 = _parse(y1, int, 'line {}: malformed y1: {{}}'.format(line))
+            x2 = _parse(x2, int, 'line {}: malformed x2: {{}}'.format(line))
+            y2 = _parse(y2, int, 'line {}: malformed y2: {{}}'.format(line))
+            x3 = _parse(x3, int, 'line {}: malformed x3: {{}}'.format(line))
+            y3 = _parse(y3, int, 'line {}: malformed y3: {{}}'.format(line))
+            x4 = _parse(x4, int, 'line {}: malformed x4: {{}}'.format(line))
+            y4 = _parse(y4, int, 'line {}: malformed y4: {{}}'.format(line))
+
+            # check if the current class name is correctly present
+            if class_name not in classes:
+                raise ValueError(f'line {line}: unknown class name: \'{class_name}\' (classes: {classes})')
+
+            result[img_file].append({'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+                                     'x3': x3, 'y3': y3, 'x4': x4, 'y4': y4, 'class': class_name})
         except ValueError:
             raise_from(ValueError(
-                'line {}: format should be \'img_file,x1,y1,x2,y2,class_name\' or \'img_file,,,,,\''.format(line)),
+                f'line {line}: format should be \'img_file,x1,y1,x2,y2,class_name\' or \'img_file,,,,,\''),
                 None)
 
-        if img_file not in result:
-            result[img_file] = []
-
-        # If a row contains only an image path, it's an image without annotations.
-        if (x1, y1, x2, y2, class_name) == ('', '', '', '', ''):
-            continue
-
-        x1 = _parse(x1, int, 'line {}: malformed x1: {{}}'.format(line))
-        y1 = _parse(y1, int, 'line {}: malformed y1: {{}}'.format(line))
-        x2 = _parse(x2, int, 'line {}: malformed x2: {{}}'.format(line))
-        y2 = _parse(y2, int, 'line {}: malformed y2: {{}}'.format(line))
-
-        # Check that the bounding box is valid.
-        if x2 <= x1:
-            raise ValueError('line {}: x2 ({}) must be higher than x1 ({})'.format(line, x2, x1))
-        if y2 <= y1:
-            raise ValueError('line {}: y2 ({}) must be higher than y1 ({})'.format(line, y2, y1))
-
-        # check if the current class name is correctly present
-        if class_name not in classes:
-            raise ValueError('line {}: unknown class name: \'{}\' (classes: {})'.format(line, class_name, classes))
-
-        result[img_file].append({'x1': x1, 'x2': x2, 'y1': y1, 'y2': y2, 'class': class_name})
     return result
 
 
@@ -141,7 +146,10 @@ class CSVGenerator(Generator):
 
         # Take base_dir from annotations file if not explicitly specified.
         if self.base_dir is None:
-            self.base_dir = os.path.dirname(csv_data_file)
+            if osp.exists(csv_data_file):
+                self.base_dir = ''
+            else:
+                self.base_dir = osp.dirname(csv_data_file)
 
         # parse the provided class file
         try:
@@ -156,10 +164,10 @@ class CSVGenerator(Generator):
         for key, value in self.classes.items():
             self.labels[value] = key
 
-        # csv with img_path, x1, y1, x2, y2, class_name
+        # csv with img_path, x1, y1, x2, y2, x3, y3, x4, y4, class_name
         try:
             with _open_for_csv(csv_data_file) as file:
-                # {'img_path1':[{'x1':xx,'y1':xx,'x2':xx,'y2':xx,'class':xx}...],...}
+                # {'img_path1':[{'x1':xx,'y1':xx,'x2':xx,'y2':xx,'x3':xx,'y3':xx,'x4':xx,'y4':xx, 'class':xx}...],...}
                 self.image_data = _read_annotations(csv.reader(file, delimiter=','), self.classes)
         except ValueError as e:
             raise_from(ValueError('invalid CSV annotations file: {}: {}'.format(csv_data_file, e)), None)
@@ -207,7 +215,7 @@ class CSVGenerator(Generator):
         """
         Returns the image path for image_index.
         """
-        return os.path.join(self.base_dir, self.image_names[image_index])
+        return osp.join(self.base_dir, self.image_names[image_index])
 
     def image_aspect_ratio(self, image_index):
         """
@@ -230,15 +238,88 @@ class CSVGenerator(Generator):
         Load annotations for an image_index.
         """
         path = self.image_names[image_index]
-        annotations = {'labels': np.empty((0,), dtype=np.int32), 'bboxes': np.empty((0, 4))}
+        annotations = {'labels': np.empty((0,), dtype=np.int32),
+                       'bboxes': np.empty((0, 4), dtype=np.float32),
+                       'vertexes': np.empty((0, 4, 2), dtype=np.float32),
+                       }
 
         for idx, annot in enumerate(self.image_data[path]):
             annotations['labels'] = np.concatenate((annotations['labels'], [self.name_to_label(annot['class'])]))
+            vertexes = np.array([[float(annot['x1']), float(annot['y1'])],
+                                 [float(annot['x2']), float(annot['y2'])],
+                                 [float(annot['x3']), float(annot['y3'])],
+                                 [float(annot['x4']), float(annot['y4'])]])
+            ordered_vertexes = self.reorder_vertexes(vertexes)
+            annotations['vertexes'] = np.concatenate((annotations['vertexes'], ordered_vertexes[None]))
             annotations['bboxes'] = np.concatenate((annotations['bboxes'], [[
-                float(annot['x1']),
-                float(annot['y1']),
-                float(annot['x2']),
-                float(annot['y2']),
+                float(min(annot['x1'], annot['x2'], annot['x3'], annot['x4'])),
+                float(min(annot['y1'], annot['y2'], annot['y3'], annot['y4'])),
+                float(max(annot['x1'], annot['x2'], annot['x3'], annot['x4'])),
+                float(max(annot['y1'], annot['y2'], annot['y3'], annot['y4'])),
             ]]))
 
         return annotations
+
+    def reorder_vertexes(self, vertexes):
+        """
+        reorder vertexes as the paper shows, (top, right, bottom, left)
+        Args:
+            vertexes:
+
+        Returns:
+
+        """
+        assert vertexes.shape == (4, 2)
+        xmin, ymin = np.min(vertexes, axis=0)
+        xmax, ymax = np.max(vertexes, axis=0)
+
+        # determine the first point with the smallest y,
+        # if two vertexes has same y, choose that with smaller x,
+        ordered_idxes = np.argsort(vertexes, axis=0)
+        ymin1_idx = ordered_idxes[0, 1]
+        ymin2_idx = ordered_idxes[1, 1]
+        if vertexes[ymin1_idx, 1] == vertexes[ymin2_idx, 1]:
+            if vertexes[ymin1_idx, 0] <= vertexes[ymin2_idx, 0]:
+                first_vertex_idx = ymin1_idx
+            else:
+                first_vertex_idx = ymin2_idx
+        else:
+            first_vertex_idx = ymin1_idx
+        ordered_idxes = [(first_vertex_idx + i) % 4 for i in range(4)]
+        ordered_vertexes = vertexes[ordered_idxes]
+        # drag the point to the corresponding edge
+        ordered_vertexes[0, 1] = ymin
+        ordered_vertexes[1, 0] = xmax
+        ordered_vertexes[2, 1] = ymax
+        ordered_vertexes[3, 0] = xmin
+        return ordered_vertexes
+
+
+if __name__ == '__main__':
+    generator = CSVGenerator('datasets/train_quad/train_800_200.csv',
+                             'datasets/train_quad/classes.csv',
+                             batch_size=1, shuffle_groups=False)
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    for i, group in enumerate(generator.groups):
+        images_group, annotations_group = generator.get_augmented_data(group)
+        image = images_group[0]
+        image[..., 0] *= std[0]
+        image[..., 1] *= std[1]
+        image[..., 2] *= std[2]
+        image[..., 0] += mean[0]
+        image[..., 1] += mean[1]
+        image[..., 2] += mean[2]
+        image = (image * 255.).astype(np.uint8)
+        annotations = annotations_group[0]
+        bboxes = np.round(annotations['bboxes']).astype(np.int32)[0]
+        vertexes = np.round(annotations['vertexes']).astype(np.int32)[0]
+        alphas = annotations['alphas'][0]
+        cv2.rectangle(image, (bboxes[0], bboxes[1]), (bboxes[2], bboxes[3]), (0, 255, 0), 1)
+        cv2.drawContours(image, [vertexes], -1, (255, 0, 0), 1)
+        for i, alpha in enumerate(alphas, 0):
+            cv2.putText(image, f'{i}-{alpha:.2f}', (vertexes[i][0], vertexes[i][1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (255, 0, 0), 1)
+        cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+        cv2.imshow('image', image)
+        cv2.waitKey(0)

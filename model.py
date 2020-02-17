@@ -168,9 +168,10 @@ def build_regress_head(width, depth, num_anchors=9):
             **options
         )(outputs)
 
-    outputs = layers.Conv2D(num_anchors * 4, **options)(outputs)
+    # obb: 4 -> 8
+    outputs = layers.Conv2D(num_anchors * 8, **options)(outputs)
     # (b, num_anchors_this_feature_map, 4)
-    outputs = layers.Reshape((-1, 4))(outputs)
+    outputs = layers.Reshape((-1, 8))(outputs)
 
     return models.Model(inputs=inputs, outputs=outputs, name='box_head')
 
@@ -240,14 +241,14 @@ def efficientdet(phi, num_classes=20, weighted_bifpn=False, freeze_bn=False, sco
     # apply predicted regression to anchors
     # anchors = tf.tile(tf.expand_dims(tf.constant(anchors), axis=0), (tf.shape(regression)[0], 1, 1))
     anchors_input = layers.Input((None, 4))
-    boxes = RegressBoxes(name='boxes')([anchors_input, regression])
+    boxes = RegressBoxes(name='boxes')([anchors_input, regression[..., :4]])
     boxes = ClipBoxes(name='clipped_boxes')([image_input, boxes])
 
     # filter detections (apply NMS / score threshold / select top-k)
     detections = FilterDetections(
         name='filtered_detections',
         score_threshold=score_threshold
-    )([boxes, classification])
+    )([boxes, classification, regression[..., 4:8]])
     prediction_model = models.Model(inputs=[image_input, anchors_input], outputs=detections, name='efficientdet_p')
     return model, prediction_model
 

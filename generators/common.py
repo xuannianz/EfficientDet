@@ -39,7 +39,6 @@ class Generator(keras.utils.Sequence):
         self.image_size = image_sizes[phi]
         self.groups = None
         self.anchors = anchors_for_shape((self.image_size, self.image_size))
-        self.current_index = 0
 
         # Define groups
         self.group_images()
@@ -51,7 +50,6 @@ class Generator(keras.utils.Sequence):
     def on_epoch_end(self):
         if self.shuffle_groups:
             random.shuffle(self.groups)
-        self.current_index = 0
 
     def size(self):
         """
@@ -187,8 +185,8 @@ class Generator(keras.utils.Sequence):
             annotations['bboxes'][:, 3] = np.clip(annotations['bboxes'][:, 3], 1, image_height - 1)
             # test x2 < x1 | y2 < y1 | x1 < 0 | y1 < 0 | x2 <= 0 | y2 <= 0 | x2 >= image.shape[1] | y2 >= image.shape[0]
             small_indices = np.where(
-                (annotations['bboxes'][:, 2] - annotations['bboxes'][:, 0] < 10) |
-                (annotations['bboxes'][:, 3] - annotations['bboxes'][:, 1] < 10)
+                (annotations['bboxes'][:, 2] - annotations['bboxes'][:, 0] < 3) |
+                (annotations['bboxes'][:, 3] - annotations['bboxes'][:, 1] < 3)
             )[0]
 
             # delete invalid indices
@@ -283,7 +281,9 @@ class Generator(keras.utils.Sequence):
         annotations['bboxes'] *= scale
         annotations['bboxes'][:, [0, 2]] += offset_w
         annotations['bboxes'][:, [1, 3]] += offset_h
-        # print(annotations['bboxes'][:, [2, 3]] - annotations['bboxes'][:, [0, 1]])
+        annotations['vertexes'] *= scale
+        annotations['vertexes'][:, :, 0] += offset_w
+        annotations['vertexes'][:, :, 1] += offset_h
         return image, annotations
 
     def preprocess_group(self, image_group, annotations_group):
@@ -322,6 +322,21 @@ class Generator(keras.utils.Sequence):
         batch_images = np.array(image_group).astype(np.float32)
         return [batch_images]
 
+    def compute_alphas(self, annotations_group):
+        for i, annotations in enumerate(annotations_group):
+            vertexes = annotations['vertexes']
+            alphas = np.zeros((vertexes.shape[0], 4), dtype=np.float32)
+            xmin = np.min(vertexes, axis=1)[:, 0]
+            ymin = np.min(vertexes, axis=1)[:, 1]
+            xmax = np.max(vertexes, axis=1)[:, 0]
+            ymax = np.max(vertexes, axis=1)[:, 1]
+            # alpha1, alpha2, alpha3, alpha4
+            alphas[:, 0] = (vertexes[:, 0, 0] - xmin) / (xmax - xmin)
+            alphas[:, 1] = (vertexes[:, 1, 1] - ymin) / (ymax - ymin)
+            alphas[:, 2] = (xmax - vertexes[:, 2, 0]) / (xmax - xmin)
+            alphas[:, 3] = (ymax - vertexes[:, 3, 1]) / (ymax - ymin)
+            annotations['alphas'] = alphas
+
     def compute_targets(self, image_group, annotations_group):
         """
         Compute target outputs for the network using images and their annotations.
@@ -358,7 +373,10 @@ class Generator(keras.utils.Sequence):
         # image_group, annotations_group = self.random_transform_group(image_group, annotations_group)
 
         # randomly apply misc effect
-        image_group, annotations_group = self.random_misc_group(image_group, annotations_group)
+        # image_group, annotations_group = self.random_misc_group(image_group, annotations_group)
+
+        # randomly rotate data
+        image_group, annotations_group = self.rotate_group(image_group, annotations_group)
 
         # perform preprocessing steps
         image_group, annotations_group = self.preprocess_group(image_group, annotations_group)
@@ -366,8 +384,11 @@ class Generator(keras.utils.Sequence):
         # check validity of annotations
         image_group, annotations_group = self.clip_transformed_annotations(image_group, annotations_group, group)
 
-        if len(image_group) == 0:
-            return None, None
+        assert len(image_group) != 0
+        assert len(image_group) == len(annotations_group)
+
+        # compute alphas for targets
+        self.compute_alphas(annotations_group)
 
         # compute network inputs
         inputs = self.compute_inputs(image_group, annotations_group)
@@ -388,19 +409,8 @@ class Generator(keras.utils.Sequence):
         """
         Keras sequence method for generating batches.
         """
-        group = self.groups[self.current_index]
+        group = self.groups[index]
         inputs, targets = self.compute_inputs_targets(group)
-        while inputs is None:
-            current_index = self.current_index + 1
-            if current_index >= len(self.groups):
-                current_index = current_index % (len(self.groups))
-            self.current_index = current_index
-            group = self.groups[self.current_index]
-            inputs, targets = self.compute_inputs_targets(group)
-        current_index = self.current_index + 1
-        if current_index >= len(self.groups):
-            current_index = current_index % (len(self.groups))
-        self.current_index = current_index
         return inputs, targets
 
     def preprocess_image(self, image):
@@ -429,6 +439,61 @@ class Generator(keras.utils.Sequence):
         new_image[..., 2] /= std[2]
         return new_image, scale, offset_h, offset_w
 
+    def rotate_group_entry(self, image, annotations):
+        vertexes = annotations['vertexes']
+        if np.random.uniform(0, 1) < 0.2:
+            return image, annotations
+        rotate_degree = np.random.uniform(low=-45, high=45)
+        h, w = image.shape[:2]
+        # Compute the rotation matrix.
+        M = cv2.getRotationMatrix2D(center=(w / 2, h / 2),
+                                    angle=rotate_degree,
+                                    scale=1)
+
+        # Get the sine and cosine from the rotation matrix.
+        abs_cos_angle = np.abs(M[0, 0])
+        abs_sin_angle = np.abs(M[0, 1])
+
+        # Compute the new bounding dimensions of the image.
+        new_w = int(h * abs_sin_angle + w * abs_cos_angle)
+        new_h = int(h * abs_cos_angle + w * abs_sin_angle)
+
+        # Adjust the rotation matrix to take into account the translation.
+        M[0, 2] += new_w // 2 - w // 2
+        M[1, 2] += new_h // 2 - h // 2
+
+        # Rotate the image.
+        image = cv2.warpAffine(image, M=M, dsize=(new_w, new_h), flags=cv2.INTER_CUBIC,
+                               borderMode=cv2.BORDER_CONSTANT,
+                               borderValue=(128, 128, 128))
+
+        if vertexes is not None and vertexes.shape[0] != 0:
+            rotated_vertexes = []
+            for vertex in vertexes:
+                vertex = np.concatenate([vertex, np.ones((4, 1))], axis=-1)
+                rotated_vertex = M.dot(vertex.T).T[:, :2]
+                vertex = self.reorder_vertexes(rotated_vertex)
+                rotated_vertexes.append(vertex)
+            vertexes = np.stack(rotated_vertexes)
+            annotations['vertexes'] = vertexes
+            xmin = np.min(vertexes, axis=1)[:, 0]
+            ymin = np.min(vertexes, axis=1)[:, 1]
+            xmax = np.max(vertexes, axis=1)[:, 0]
+            ymax = np.max(vertexes, axis=1)[:, 1]
+            boxes = np.stack([xmin, ymin, xmax, ymax], axis=1)
+            annotations['bboxes'] = boxes
+        return image, annotations
+
+    def rotate_group(self, image_group, annotations_group):
+        assert (len(image_group) == len(annotations_group))
+
+        for index in range(len(image_group)):
+            # preprocess a single group entry
+            image_group[index], annotations_group[index] = self.rotate_group_entry(image_group[index],
+                                                                                   annotations_group[index])
+
+        return image_group, annotations_group
+
     def get_augmented_data(self, group):
         """
         Compute inputs and target outputs for the network.
@@ -443,18 +508,25 @@ class Generator(keras.utils.Sequence):
         image_group, annotations_group = self.filter_annotations(image_group, annotations_group, group)
 
         # randomly apply visual effect
-        image_group, annotations_group = self.random_visual_effect_group(image_group, annotations_group)
+        # image_group, annotations_group = self.random_visual_effect_group(image_group, annotations_group)
 
         # randomly transform data
         # image_group, annotations_group = self.random_transform_group(image_group, annotations_group)
 
         # randomly apply misc effect
-        image_group, annotations_group = self.random_misc_group(image_group, annotations_group)
+        # image_group, annotations_group = self.random_misc_group(image_group, annotations_group)
 
+        image_group, annotations_group = self.rotate_group(image_group, annotations_group)
         # perform preprocessing steps
         image_group, annotations_group = self.preprocess_group(image_group, annotations_group)
 
         # check validity of annotations
         image_group, annotations_group = self.clip_transformed_annotations(image_group, annotations_group, group)
+
+        assert len(image_group) != 0
+        assert len(image_group) == len(annotations_group)
+
+        # compute alphas for targets
+        self.compute_alphas(annotations_group)
 
         return image_group, annotations_group
