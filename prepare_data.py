@@ -103,6 +103,7 @@ def reorder_vertexes(xy_list):
     k24 = (xy_list[second_vertex_idx, 1] - xy_list[fourth_vertex_idx, 1]) / (
             xy_list[second_vertex_idx, 0] - xy_list[fourth_vertex_idx, 0] + 0.1e-7)
     if k13 < k24:
+        # NOTE: 这里是有问题的, 如 a = np.array([[772, 260], [787, 264], [768, 289], [749, 283]])
         # 此时第一个点为左下方的点, 其他三个点按顺时针方向分别存放在 reorder_xy_list 0,1,2,3 的下标位置上
         tmp_x, tmp_y = reorder_xy_list[0, 0], reorder_xy_list[0, 1]
         for i in range(3):
@@ -288,6 +289,73 @@ def show_vertex_order_in_via():
                 logger.warning(f'{filename} has no regions')
 
 
+def show_vertex_order_in_ic15():
+    dataset_dir = 'datasets/ic15'
+    train_image_dir = osp.join(dataset_dir, 'train_images')
+    test_image_dir = osp.join(dataset_dir, 'test_images')
+    train_gt_dir = osp.join(dataset_dir, 'train_gts')
+    test_gt_dir = osp.join(dataset_dir, 'test_gts')
+    with open(osp.join(dataset_dir, 'train_list.txt')) as f:
+        for line in f.readlines():
+            line = line.strip()
+            image_path = osp.join(train_image_dir, line)
+            gt_path = osp.join(train_gt_dir, line + '.txt')
+            with open(gt_path) as g:
+                gt_lines = g.readlines()
+                image = cv2.imread(image_path)
+                do_show = False
+                for gt_line in gt_lines:
+                    gt_line = gt_line.strip().strip('\ufeff')
+                    text = gt_line.split(',')[-1]
+                    points = np.array([int(coor) for coor in gt_line.split(',')[:8]]).reshape(
+                        (4, 2))
+                    # ordered_points = reorder_vertexes(points)
+                    # if not np.all(ordered_points == points):
+                    if text != '###':
+                        for idx, (point_x, point_y) in enumerate(points):
+                            cv2.putText(image, '{}'.format(idx + 1), (point_x, point_y), cv2.FONT_HERSHEY_SIMPLEX, 0.4,
+                                        (0, 255, 0), 1)
+                        do_show = True
+                if do_show:
+                    cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+                    cv2.imshow('image', image)
+                    cv2.waitKey(0)
+
+
+def concatenate_ic15_annotations():
+    dataset_dir = 'datasets/ic15'
+    train_image_dir = osp.join(dataset_dir, 'train_images')
+    val_image_dir = osp.join(dataset_dir, 'test_images')
+    train_gt_dir = osp.join(dataset_dir, 'train_gts')
+    val_gt_dir = osp.join(dataset_dir, 'test_gts')
+    train_list_txt = osp.join(dataset_dir, 'train_list.txt')
+    val_list_txt = osp.join(dataset_dir, 'test_list.txt')
+    train_annotations = []
+    train_annotations_csv = osp.join(dataset_dir, 'train.csv')
+    val_annotations = []
+    val_annotations_csv = osp.join(dataset_dir, 'val.csv')
+    for image_dir, gt_dir, list_txt, annotations, annotations_csv in zip(
+            [train_image_dir, val_image_dir],
+            [train_gt_dir, val_gt_dir],
+            [train_list_txt, val_list_txt],
+            [train_annotations, val_annotations],
+            [train_annotations_csv, val_annotations_csv]
+    ):
+        with open(list_txt) as f:
+            for line in f.readlines():
+                line = line.strip()
+                gt_path = osp.join(gt_dir, line + '.txt')
+                image_path = osp.join(image_dir, line)
+                if not osp.exists(gt_path):
+                    gt_path = osp.join(gt_dir, 'gt_' + line[:-4] + '.txt')
+                with open(gt_path) as g:
+                    gt_lines = g.readlines()
+                    gt_lines = [','.join([image_path, gt_line.strip('\ufeff')]) for gt_line in gt_lines]
+                    annotations.extend(gt_lines)
+        with open(annotations_csv, 'w') as f:
+            f.writelines(annotations)
+
+
 def convert_labelme_to_csv():
     dataset_dir = 'datasets/train_quad'
     papery_dataset_dir = osp.join(dataset_dir, 'papery')
@@ -363,8 +431,10 @@ if __name__ == '__main__':
     logger.addHandler(sh)
 
     # show_vertex_order_in_via()
-    show_vertex_order_in_labelme()
+    # show_vertex_order_in_labelme()
+    # show_vertex_order_in_ic15()
     # convert_labelme_to_csv()
+    concatenate_ic15_annotations()
 
     # while True:
     #     image = cv2.imread('datasets/train_quad/ele/2_1_011001600111_90113646.jpg')

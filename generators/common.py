@@ -322,7 +322,7 @@ class Generator(keras.utils.Sequence):
         batch_images = np.array(image_group).astype(np.float32)
         return [batch_images]
 
-    def compute_alphas(self, annotations_group):
+    def compute_alphas_and_ratios(self, annotations_group):
         for i, annotations in enumerate(annotations_group):
             vertexes = annotations['vertexes']
             alphas = np.zeros((vertexes.shape[0], 4), dtype=np.float32)
@@ -336,6 +336,12 @@ class Generator(keras.utils.Sequence):
             alphas[:, 2] = (xmax - vertexes[:, 2, 0]) / (xmax - xmin)
             alphas[:, 3] = (ymax - vertexes[:, 3, 1]) / (ymax - ymin)
             annotations['alphas'] = alphas
+            # ratio
+            area1 = 0.5 * alphas[:, 0] * (1 - alphas[:, 3])
+            area2 = 0.5 * alphas[:, 1] * (1 - alphas[:, 0])
+            area3 = 0.5 * alphas[:, 2] * (1 - alphas[:, 1])
+            area4 = 0.5 * alphas[:, 3] * (1 - alphas[:, 2])
+            annotations['ratios'] = 1 - area1 - area2 - area3 - area4
 
     def compute_targets(self, image_group, annotations_group):
         """
@@ -387,8 +393,8 @@ class Generator(keras.utils.Sequence):
         assert len(image_group) != 0
         assert len(image_group) == len(annotations_group)
 
-        # compute alphas for targets
-        self.compute_alphas(annotations_group)
+        # compute alphas and ratio for targets
+        self.compute_alphas_and_ratios(annotations_group)
 
         # compute network inputs
         inputs = self.compute_inputs(image_group, annotations_group)
@@ -527,6 +533,6 @@ class Generator(keras.utils.Sequence):
         assert len(image_group) == len(annotations_group)
 
         # compute alphas for targets
-        self.compute_alphas(annotations_group)
+        self.compute_alphas_and_ratios(annotations_group)
 
         return image_group, annotations_group

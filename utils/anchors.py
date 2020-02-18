@@ -75,8 +75,8 @@ def anchor_targets_bbox(
 
     batch_size = len(image_group)
 
-    # obb: 4 -> 8
-    regression_batch = np.zeros((batch_size, anchors.shape[0], 8 + 1), dtype=np.float32)
+    # obb: 4 -> 9
+    regression_batch = np.zeros((batch_size, anchors.shape[0], 9 + 1), dtype=np.float32)
     labels_batch = np.zeros((batch_size, anchors.shape[0], num_classes + 1), dtype=np.float32)
 
     # compute labels and regression targets
@@ -101,6 +101,7 @@ def anchor_targets_bbox(
 
             regression_batch[index, :, :4] = bbox_transform(anchors, annotations['bboxes'][argmax_overlaps_inds, :])
             regression_batch[index, :, 4:8] = annotations['alphas'][argmax_overlaps_inds, :]
+            regression_batch[index, :, 8] = annotations['ratios'][argmax_overlaps_inds]
 
         # ignore anchors outside of image
         if image.shape:

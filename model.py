@@ -168,10 +168,10 @@ def build_regress_head(width, depth, num_anchors=9):
             **options
         )(outputs)
 
-    # obb: 4 -> 8
-    outputs = layers.Conv2D(num_anchors * 8, **options)(outputs)
+    # obb: 4 -> 9
+    outputs = layers.Conv2D(num_anchors * 9, **options)(outputs)
     # (b, num_anchors_this_feature_map, 4)
-    outputs = layers.Reshape((-1, 8))(outputs)
+    outputs = layers.Reshape((-1, 9))(outputs)
 
     return models.Model(inputs=inputs, outputs=outputs, name='box_head')
 

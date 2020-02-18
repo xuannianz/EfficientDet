@@ -96,7 +96,7 @@ def smooth_l1(sigma=3.0):
         """
         # separate target and state
         regression = y_pred
-        regression = tf.concat([regression[..., :4], tf.sigmoid(regression[..., 4:8])], axis=-1)
+        regression = tf.concat([regression[..., :4], tf.sigmoid(regression[..., 4:9])], axis=-1)
         regression_target = y_true[:, :, :-1]
         anchor_state = y_true[:, :, -1]
 
@@ -115,32 +115,39 @@ def smooth_l1(sigma=3.0):
             0.5 * sigma_squared * keras.backend.pow(regression_diff[..., :4], 2),
             regression_diff[..., :4] - 0.5 / sigma_squared
         )
-        area1 = 0.5 * regression_target[..., 4:5] * (1 - regression_target[..., 7:8])
-        area2 = 0.5 * regression_target[..., 5:6] * (1 - regression_target[..., 4:5])
-        area3 = 0.5 * regression_target[..., 6:7] * (1 - regression_target[..., 5:6])
-        area4 = 0.5 * regression_target[..., 7:8] * (1 - regression_target[..., 6:7])
-        ratio = (1 - area1 - area2 - area3 - area4)
-        ratio = tf.tile(ratio, (1, 4))
+        # area1 = 0.5 * regression_target[..., 4:5] * (1 - regression_target[..., 7:8])
+        # area2 = 0.5 * regression_target[..., 5:6] * (1 - regression_target[..., 4:5])
+        # area3 = 0.5 * regression_target[..., 6:7] * (1 - regression_target[..., 5:6])
+        # area4 = 0.5 * regression_target[..., 7:8] * (1 - regression_target[..., 6:7])
+        # ratio = (1 - area1 - area2 - area3 - area4)
+        # ratio = tf.tile(ratio, (1, 4))
 
-        alpha_regression_loss_part1 = tf.where(
+        alpha_regression_loss = tf.where(
             keras.backend.less(regression_diff[..., 4:8], 1.0 / sigma_squared),
             0.5 * sigma_squared * keras.backend.pow(regression_diff[..., 4:8], 2),
             regression_diff[..., 4:8] - 0.5 / sigma_squared
         )
-        alpha_regression_loss_part2 = keras.backend.binary_crossentropy(regression_target[..., 4:8],
-                                                                        regression[..., 4:8])
-        alpha_regression_loss = tf.where(tf.less(ratio, 0.8), alpha_regression_loss_part1, alpha_regression_loss_part2)
+
+        ratio_regression_loss = tf.where(
+            keras.backend.less(regression_diff[..., 8], 1.0 / sigma_squared),
+            0.5 * sigma_squared * keras.backend.pow(regression_diff[..., 8], 2),
+            regression_diff[..., 8] - 0.5 / sigma_squared
+        )
         # compute the normalizer: the number of positive anchors
         normalizer = keras.backend.maximum(1, keras.backend.shape(indices)[0])
         normalizer = keras.backend.cast(normalizer, dtype=keras.backend.floatx())
 
         box_regression_loss = tf.reduce_sum(box_regression_loss) / normalizer
         alpha_regression_loss = tf.reduce_sum(alpha_regression_loss) / normalizer
+        ratio_regression_loss = tf.reduce_sum(ratio_regression_loss) / normalizer
+
         box_regression_loss = tf.Print(box_regression_loss, [box_regression_loss], '\nbox_regression_loss',
                                        summarize=1000)
         alpha_regression_loss = tf.Print(alpha_regression_loss, [alpha_regression_loss], '\nalpha_regression_loss',
                                          summarize=1000)
+        ratio_regression_loss = tf.Print(ratio_regression_loss, [ratio_regression_loss], '\nratio_regression_loss',
+                                         summarize=1000)
 
-        return box_regression_loss + alpha_regression_loss
+        return box_regression_loss + alpha_regression_loss + 16 * ratio_regression_loss
 
     return _smooth_l1

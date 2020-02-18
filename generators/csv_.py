@@ -60,7 +60,7 @@ def _read_classes(csv_reader):
     return result
 
 
-def _read_annotations(csv_reader, classes):
+def _read_annotations(csv_reader, classes, is_text=False):
     """
     Read annotations from the csv_reader.
     Args:
@@ -93,6 +93,12 @@ def _read_annotations(csv_reader, classes):
             y4 = _parse(y4, int, 'line {}: malformed y4: {{}}'.format(line))
 
             # check if the current class name is correctly present
+            if is_text:
+                if class_name == '###':
+                    continue
+                else:
+                    class_name = 'text'
+
             if class_name not in classes:
                 raise ValueError(f'line {line}: unknown class name: \'{class_name}\' (classes: {classes})')
 
@@ -100,7 +106,7 @@ def _read_annotations(csv_reader, classes):
                                      'x3': x3, 'y3': y3, 'x4': x4, 'y4': y4, 'class': class_name})
         except ValueError:
             raise_from(ValueError(
-                f'line {line}: format should be \'img_file,x1,y1,x2,y2,class_name\' or \'img_file,,,,,\''),
+                f'line {line}: format should be \'img_file,x1,y1,x2,y2,x3,y3,x4,y4,class_name\' or \'img_file,,,,,\''),
                 None)
 
     return result
@@ -130,6 +136,7 @@ class CSVGenerator(Generator):
             csv_data_file,
             csv_class_file,
             base_dir=None,
+            is_text=False,
             **kwargs
     ):
         """
@@ -138,11 +145,13 @@ class CSVGenerator(Generator):
         Args
             csv_data_file: Path to the CSV annotations file.
             csv_class_file: Path to the CSV classes file.
+            is_text: if is text annotations file
             base_dir: Directory w.r.t. where the files are to be searched (defaults to the directory containing the csv_data_file).
         """
         self.image_names = []
         self.image_data = {}
         self.base_dir = base_dir
+        self.is_text = is_text
 
         # Take base_dir from annotations file if not explicitly specified.
         if self.base_dir is None:
@@ -168,7 +177,7 @@ class CSVGenerator(Generator):
         try:
             with _open_for_csv(csv_data_file) as file:
                 # {'img_path1':[{'x1':xx,'y1':xx,'x2':xx,'y2':xx,'x3':xx,'y3':xx,'x4':xx,'y4':xx, 'class':xx}...],...}
-                self.image_data = _read_annotations(csv.reader(file, delimiter=','), self.classes)
+                self.image_data = _read_annotations(csv.reader(file, delimiter=','), self.classes, self.is_text)
         except ValueError as e:
             raise_from(ValueError('invalid CSV annotations file: {}: {}'.format(csv_data_file, e)), None)
         self.image_names = list(self.image_data.keys())
@@ -315,11 +324,14 @@ if __name__ == '__main__':
         bboxes = np.round(annotations['bboxes']).astype(np.int32)[0]
         vertexes = np.round(annotations['vertexes']).astype(np.int32)[0]
         alphas = annotations['alphas'][0]
+        ratio = annotations['ratios'][0]
         cv2.rectangle(image, (bboxes[0], bboxes[1]), (bboxes[2], bboxes[3]), (0, 255, 0), 1)
         cv2.drawContours(image, [vertexes], -1, (255, 0, 0), 1)
         for i, alpha in enumerate(alphas, 0):
             cv2.putText(image, f'{i}-{alpha:.2f}', (vertexes[i][0], vertexes[i][1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (255, 0, 0), 1)
+        cv2.putText(image, f'{ratio:.2f}', ((bboxes[0] + bboxes[2]) // 2, (bboxes[1] + bboxes[3]) // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
         cv2.namedWindow('image', cv2.WINDOW_NORMAL)
         cv2.imshow('image', image)
         cv2.waitKey(0)
