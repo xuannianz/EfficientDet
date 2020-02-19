@@ -210,7 +210,7 @@ def build_class_head(width, depth, num_classes=20, num_anchors=9):
     return models.Model(inputs=inputs, outputs=outputs, name='class_head')
 
 
-def efficientdet(phi, num_classes=20, weighted_bifpn=False, freeze_bn=False, score_threshold=0.01):
+def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freeze_bn=False, score_threshold=0.01):
     assert phi in range(7)
     input_size = image_sizes[phi]
     input_shape = (input_size, input_size, 3)
@@ -229,8 +229,8 @@ def efficientdet(phi, num_classes=20, weighted_bifpn=False, freeze_bn=False, sco
     else:
         for i in range(d_bifpn):
             features = build_BiFPN(features, w_bifpn, i, freeze_bn=freeze_bn)
-    regress_head = build_regress_head(w_head, d_head)
-    class_head = build_class_head(w_head, d_head, num_classes=num_classes)
+    regress_head = build_regress_head(w_head, d_head, num_anchors=num_anchors)
+    class_head = build_class_head(w_head, d_head, num_classes=num_classes, num_anchors=num_anchors)
     regression = [regress_head(feature) for feature in features]
     regression = layers.Concatenate(axis=1, name='regression')(regression)
     classification = [class_head(feature) for feature in features]
@@ -248,9 +248,17 @@ def efficientdet(phi, num_classes=20, weighted_bifpn=False, freeze_bn=False, sco
     detections = FilterDetections(
         name='filtered_detections',
         score_threshold=score_threshold
-    )([boxes, classification, regression[..., 4:8]])
+    )([boxes, classification, regression[..., 4:8], regression[..., 8]])
     prediction_model = models.Model(inputs=[image_input, anchors_input], outputs=detections, name='efficientdet_p')
     return model, prediction_model
 
 
-
+if __name__ == '__main__':
+    model, prediction_model = efficientdet(phi=3,
+                                           num_classes=1,
+                                           num_anchors=12,
+                                           weighted_bifpn=False,
+                                           freeze_bn=False)
+    model.summary()
+    for i, layer in enumerate(model.layers):
+        print(i, layer.name)

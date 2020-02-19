@@ -173,6 +173,7 @@ def create_generators(args):
             args.classes_path,
             misc_effect=misc_effect,
             visual_effect=visual_effect,
+            is_text=args.is_text,
             **common_args
         )
 
@@ -181,6 +182,7 @@ def create_generators(args):
                 args.val_annotations_path,
                 args.classes_path,
                 shuffle_groups=False,
+                is_text=args.is_text,
                 **common_args
             )
         else:
@@ -259,6 +261,7 @@ def parse_args(args):
     csv_parser.add_argument('classes_path', help='Path to a CSV file containing class label mapping.')
     csv_parser.add_argument('--val-annotations-path',
                             help='Path to CSV file containing annotations for validation (optional).')
+    csv_parser.add_argument('--is-text', help='If train on text annotations.', action='store_true', default=False)
 
     parser.add_argument('--snapshot', help='Resume training from a snapshot.')
     parser.add_argument('--freeze-backbone', help='Freeze training of backbone layers.', action='store_true')
@@ -310,7 +313,10 @@ def main(args=None):
     train_generator, validation_generator = create_generators(args)
 
     num_classes = train_generator.num_classes()
-    model, prediction_model = efficientdet(args.phi, num_classes=num_classes,
+    num_anchors = train_generator.num_anchors
+    model, prediction_model = efficientdet(args.phi,
+                                           num_classes=num_classes,
+                                           num_anchors=num_anchors,
                                            weighted_bifpn=args.weighted_bifpn,
                                            freeze_bn=args.freeze_bn)
 
@@ -358,7 +364,7 @@ def main(args=None):
     return model.fit_generator(
         generator=train_generator,
         steps_per_epoch=args.steps,
-        initial_epoch=21,
+        initial_epoch=0,
         epochs=args.epochs,
         verbose=1,
         callbacks=callbacks,

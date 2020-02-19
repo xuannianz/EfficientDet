@@ -169,6 +169,7 @@ def filter_detections(
         boxes,
         classification,
         alphas,
+        ratios,
         class_specific_filter=True,
         nms=True,
         score_threshold=0.01,
@@ -262,12 +263,14 @@ def filter_detections(
     indices = keras.backend.gather(indices[:, 0], top_indices)
     boxes = keras.backend.gather(boxes, indices)
     alphas = keras.backend.gather(alphas, indices)
+    ratios = keras.backend.gather(ratios, indices)
     labels = keras.backend.gather(labels, top_indices)
 
     # zero pad the outputs
     pad_size = keras.backend.maximum(0, max_detections - keras.backend.shape(scores)[0])
     boxes = tf.pad(boxes, [[0, pad_size], [0, 0]], constant_values=-1)
     alphas = tf.pad(alphas, [[0, pad_size], [0, 0]], constant_values=-1)
+    ratios = tf.pad(ratios, [[0, pad_size]], constant_values=-1)
     scores = tf.pad(scores, [[0, pad_size]], constant_values=-1)
     labels = tf.pad(labels, [[0, pad_size]], constant_values=-1)
     labels = keras.backend.cast(labels, 'int32')
@@ -275,10 +278,11 @@ def filter_detections(
     # set shapes, since we know what they are
     boxes.set_shape([max_detections, 4])
     alphas.set_shape([max_detections, 4])
+    ratios.set_shape([max_detections])
     scores.set_shape([max_detections])
     labels.set_shape([max_detections])
 
-    return [boxes, scores, alphas, labels]
+    return [boxes, scores, alphas, ratios, labels]
 
 
 class FilterDetections(keras.layers.Layer):
@@ -325,17 +329,20 @@ class FilterDetections(keras.layers.Layer):
         boxes = inputs[0]
         classification = inputs[1]
         alphas = inputs[2]
+        ratios = inputs[3]
 
         # wrap nms with our parameters
         def _filter_detections(args):
             boxes_ = args[0]
             classification_ = args[1]
             alphas_ = args[2]
+            ratios_ = args[3]
 
             return filter_detections(
                 boxes_,
                 classification_,
                 alphas_,
+                ratios_,
                 nms=self.nms,
                 class_specific_filter=self.class_specific_filter,
                 score_threshold=self.score_threshold,
@@ -346,8 +353,8 @@ class FilterDetections(keras.layers.Layer):
         # call filter_detections on each batch item
         outputs = tf.map_fn(
             _filter_detections,
-            elems=[boxes, classification, alphas],
-            dtype=[keras.backend.floatx(), keras.backend.floatx(), keras.backend.floatx(), 'int32'],
+            elems=[boxes, classification, alphas, ratios],
+            dtype=['float32', 'float32', 'float32', 'float32', 'int32'],
             parallel_iterations=self.parallel_iterations
         )
 
@@ -368,6 +375,7 @@ class FilterDetections(keras.layers.Layer):
             (input_shape[0][0], self.max_detections, 4),
             (input_shape[1][0], self.max_detections),
             (input_shape[1][0], self.max_detections, 4),
+            (input_shape[1][0], self.max_detections),
             (input_shape[1][0], self.max_detections),
         ]
 

@@ -30,9 +30,10 @@ class AnchorParameters:
 The default anchor parameters.
 """
 AnchorParameters.default = AnchorParameters(
-    sizes=[32, 64, 128, 256, 512],
+    sizes=[16, 32, 64, 128, 256],
     strides=[8, 16, 32, 64, 128],
-    ratios=np.array([0.5, 1, 2], keras.backend.floatx()),
+    # ratio=h/w
+    ratios=np.array([0.25, 0.5, 1, 2], keras.backend.floatx()),
     scales=np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)], keras.backend.floatx()),
 )
 
@@ -89,6 +90,9 @@ def anchor_targets_bbox(
                                                                                             annotations['bboxes'],
                                                                                             negative_overlap,
                                                                                             positive_overlap)
+            # print(f'num_positive={np.sum(positive_indices)}')
+            # print(f'num_anchors={anchors.shape[0]}')
+            # print(f'num_gts={annotations["bboxes"].shape[0]}')
             labels_batch[index, ignore_indices, -1] = -1
             labels_batch[index, positive_indices, -1] = 1
 
@@ -144,6 +148,11 @@ def compute_gt_annotations(
     # assign "dont care" labels
     # (N, )
     positive_indices = max_overlaps >= positive_overlap
+
+    # adam: in case of there are gt boxes has no matched positive anchors
+    nonzero_inds = np.nonzero(overlaps == np.max(overlaps, axis=0))
+    positive_indices[nonzero_inds[0]] = 1
+
     # (N, )
     ignore_indices = (max_overlaps > negative_overlap) & ~positive_indices
 

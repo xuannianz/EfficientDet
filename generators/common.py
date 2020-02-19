@@ -4,7 +4,7 @@ import warnings
 import cv2
 from tensorflow import keras
 
-from utils.anchors import anchors_for_shape, anchor_targets_bbox
+from utils.anchors import anchors_for_shape, anchor_targets_bbox, AnchorParameters
 
 
 class Generator(keras.utils.Sequence):
@@ -39,6 +39,7 @@ class Generator(keras.utils.Sequence):
         self.image_size = image_sizes[phi]
         self.groups = None
         self.anchors = anchors_for_shape((self.image_size, self.image_size))
+        self.num_anchors = len(AnchorParameters.default.ratios) * len(AnchorParameters.default.scales)
 
         # Define groups
         self.group_images()
@@ -359,7 +360,7 @@ class Generator(keras.utils.Sequence):
         )
         return list(batches_targets)
 
-    def compute_inputs_targets(self, group):
+    def compute_inputs_targets(self, group, debug=False):
         """
         Compute inputs and target outputs for the network.
         """
@@ -382,7 +383,7 @@ class Generator(keras.utils.Sequence):
         # image_group, annotations_group = self.random_misc_group(image_group, annotations_group)
 
         # randomly rotate data
-        image_group, annotations_group = self.rotate_group(image_group, annotations_group)
+        # image_group, annotations_group = self.rotate_group(image_group, annotations_group)
 
         # perform preprocessing steps
         image_group, annotations_group = self.preprocess_group(image_group, annotations_group)
@@ -401,6 +402,9 @@ class Generator(keras.utils.Sequence):
 
         # compute network targets
         targets = self.compute_targets(image_group, annotations_group)
+
+        if debug:
+            return inputs, targets, annotations_group
 
         return inputs, targets
 
@@ -522,7 +526,7 @@ class Generator(keras.utils.Sequence):
         # randomly apply misc effect
         # image_group, annotations_group = self.random_misc_group(image_group, annotations_group)
 
-        image_group, annotations_group = self.rotate_group(image_group, annotations_group)
+        # image_group, annotations_group = self.rotate_group(image_group, annotations_group)
         # perform preprocessing steps
         image_group, annotations_group = self.preprocess_group(image_group, annotations_group)
 

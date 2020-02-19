@@ -137,3 +137,38 @@ def rotate_image(image):
                            borderValue=(128, 128, 128))
 
     return image
+
+
+def reorder_vertexes(vertexes):
+    """
+    reorder vertexes as the paper shows, (top, right, bottom, left)
+    Args:
+        vertexes:
+
+    Returns:
+
+    """
+    assert vertexes.shape == (4, 2)
+    xmin, ymin = np.min(vertexes, axis=0)
+    xmax, ymax = np.max(vertexes, axis=0)
+
+    # determine the first point with the smallest y,
+    # if two vertexes has same y, choose that with smaller x,
+    ordered_idxes = np.argsort(vertexes, axis=0)
+    ymin1_idx = ordered_idxes[0, 1]
+    ymin2_idx = ordered_idxes[1, 1]
+    if vertexes[ymin1_idx, 1] == vertexes[ymin2_idx, 1]:
+        if vertexes[ymin1_idx, 0] <= vertexes[ymin2_idx, 0]:
+            first_vertex_idx = ymin1_idx
+        else:
+            first_vertex_idx = ymin2_idx
+    else:
+        first_vertex_idx = ymin1_idx
+    ordered_idxes = [(first_vertex_idx + i) % 4 for i in range(4)]
+    ordered_vertexes = vertexes[ordered_idxes]
+    # drag the point to the corresponding edge
+    ordered_vertexes[0, 1] = ymin
+    ordered_vertexes[1, 0] = xmax
+    ordered_vertexes[2, 1] = ymax
+    ordered_vertexes[3, 0] = xmin
+    return ordered_vertexes

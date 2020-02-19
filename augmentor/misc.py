@@ -67,8 +67,8 @@ def crop(image, boxes, prob=0.5):
         max_x2, max_y2 = np.max(boxes, axis=0)[2:]
         random_x1 = np.random.randint(0, max(min_x1 // 2, 1))
         random_y1 = np.random.randint(0, max(min_y1 // 2, 1))
-        random_x2 = np.random.randint(max_x2, max(min(w, max_x2 + (w - max_x2) // 2), max_x2 + 1))
-        random_y2 = np.random.randint(max_y2, max(min(h, max_y2 + (h - max_y2) // 2), max_y2 + 1))
+        random_x2 = np.random.randint(max_x2 + 1, max(min(w, max_x2 + (w - max_x2) // 2), max_x2 + 2))
+        random_y2 = np.random.randint(max_y2 + 1, max(min(h, max_y2 + (h - max_y2) // 2), max_y2 + 2))
         image = image[random_y1:random_y2, random_x1:random_x2]
         boxes[:, [0, 2]] = boxes[:, [0, 2]] - random_x1
         boxes[:, [1, 3]] = boxes[:, [1, 3]] - random_y1
@@ -91,8 +91,8 @@ def flipx(image, boxes, prob=0.5):
     h, w = image.shape[:2]
     if boxes.shape[0] != 0:
         tmp = boxes[:, 0].copy()
-        boxes[:, 0] = w - boxes[:, 2]
-        boxes[:, 2] = w - tmp
+        boxes[:, 0] = w - 1 - boxes[:, 2]
+        boxes[:, 2] = w - 1 - tmp
         boxes = boxes.astype(np.float32)
     return image, boxes
 
@@ -118,8 +118,8 @@ def translate(image, boxes, prob=0.5, border_value=(128, 128, 128)):
         return image, boxes
     h, w = image.shape[:2]
     if boxes.shape[0] != 0:
-        min_x1, min_y1 = np.min(boxes, axis=0)[:2]
-        max_x2, max_y2 = np.max(boxes, axis=0)[2:]
+        min_x1, min_y1 = np.min(boxes, axis=0)[:2].astype(np.int32)
+        max_x2, max_y2 = np.max(boxes, axis=0)[2:].astype(np.int32)
         translation_matrix = translation_xy(min=(min(-min_x1 // 2, 0), min(-min_y1 // 2, 0)),
                                             max=(max((w - max_x2) // 2, 1), max((h - max_y2) // 2, 1)), prob=1.)
     else:

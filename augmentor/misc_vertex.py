@@ -128,10 +128,10 @@ def translate(image, annotations, prob=0.5, border_value=(128, 128, 128)):
     vertexes = annotations['vertexes']
     bboxes = annotations['bboxes']
     if bboxes.shape[0] != 0:
-        min_x1, min_y1 = np.min(bboxes, axis=0)[:2]
-        max_x2, max_y2 = np.max(bboxes, axis=0)[2:]
-        translation_matrix = translation_xy(min=(min(-int(min_x1) // 2, 0), min(-int(min_y1) // 2, 0)),
-                                            max=(max((w - int(max_x2)) // 2, 1), max((h - int(max_y2)) // 2, 1)),
+        min_x1, min_y1 = np.min(bboxes, axis=0)[:2].astype(np.int32)
+        max_x2, max_y2 = np.max(bboxes, axis=0)[2:].astype(np.int32)
+        translation_matrix = translation_xy(min=(min(-(min_x1 // 2), 0), min(-(min_y1 // 2), 0)),
+                                            max=(max((w - 1 - max_x2) // 2, 1), max((h - 1 - max_y2) // 2, 1)),
                                             prob=1.)
     else:
         translation_matrix = translation_xy(min=(min(-w // 8, 0), min(-h // 8, 0)),
@@ -205,8 +205,8 @@ if __name__ == '__main__':
         src_image = image.copy()
         # cv2.namedWindow('src_image', cv2.WINDOW_NORMAL)
         cv2.imshow('src_image', src_image)
-        image, annotations = misc_effect(image, annotations)
-        # image, annotations = flipx(image, annotations, prob=1.)
+        # image, annotations = misc_effect(image, annotations)
+        image, annotations = translate(image, annotations, prob=1.)
         image = image.copy()
         boxes = annotations['bboxes'].astype(np.int32)
         vertexes = annotations['vertexes'].astype(np.int32)

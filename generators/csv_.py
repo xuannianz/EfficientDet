@@ -304,10 +304,7 @@ class CSVGenerator(Generator):
         return ordered_vertexes
 
 
-if __name__ == '__main__':
-    generator = CSVGenerator('datasets/train_quad/train_800_200.csv',
-                             'datasets/train_quad/classes.csv',
-                             batch_size=1, shuffle_groups=False)
+def show_annotations(generator):
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
     for i, group in enumerate(generator.groups):
@@ -319,19 +316,74 @@ if __name__ == '__main__':
         image[..., 0] += mean[0]
         image[..., 1] += mean[1]
         image[..., 2] += mean[2]
-        image = (image * 255.).astype(np.uint8)
+        image = (image * 255.).astype(np.uint8)[:, :, ::-1].copy()
         annotations = annotations_group[0]
-        bboxes = np.round(annotations['bboxes']).astype(np.int32)[0]
-        vertexes = np.round(annotations['vertexes']).astype(np.int32)[0]
-        alphas = annotations['alphas'][0]
-        ratio = annotations['ratios'][0]
-        cv2.rectangle(image, (bboxes[0], bboxes[1]), (bboxes[2], bboxes[3]), (0, 255, 0), 1)
-        cv2.drawContours(image, [vertexes], -1, (255, 0, 0), 1)
-        for i, alpha in enumerate(alphas, 0):
-            cv2.putText(image, f'{i}-{alpha:.2f}', (vertexes[i][0], vertexes[i][1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                        (255, 0, 0), 1)
-        cv2.putText(image, f'{ratio:.2f}', ((bboxes[0] + bboxes[2]) // 2, (bboxes[1] + bboxes[3]) // 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        for i in range(annotations['bboxes'].shape[0]):
+            bboxes = np.round(annotations['bboxes']).astype(np.int32)[i]
+            vertexes = np.round(annotations['vertexes']).astype(np.int32)[i]
+            alphas = annotations['alphas'][i]
+            ratio = annotations['ratios'][i]
+            cv2.rectangle(image, (bboxes[0], bboxes[1]), (bboxes[2], bboxes[3]), (0, 255, 0), 1)
+            cv2.drawContours(image, [vertexes], -1, (255, 0, 0), 1)
+            for i, alpha in enumerate(alphas, 0):
+                cv2.putText(image, f'{i}-{alpha:.2f}', (vertexes[i][0], vertexes[i][1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                            (255, 0, 0), 1)
+            cv2.putText(image, f'{ratio:.2f}', ((bboxes[0] + bboxes[2]) // 2, (bboxes[1] + bboxes[3]) // 2),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
         cv2.namedWindow('image', cv2.WINDOW_NORMAL)
         cv2.imshow('image', image)
         cv2.waitKey(0)
+
+
+def show_targets(generator):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    for i, group in enumerate(generator.groups):
+        inputs, targets, annotations_group = generator.compute_inputs_targets(group, debug=True)
+
+        # image
+        image = inputs[0][0]
+        image[..., 0] *= std[0]
+        image[..., 1] *= std[1]
+        image[..., 2] *= std[2]
+        image[..., 0] += mean[0]
+        image[..., 1] += mean[1]
+        image[..., 2] += mean[2]
+        image = (image * 255.).astype(np.uint8)[:, :, ::-1].copy()
+
+        # anchor
+        batch_regression, batch_class = targets
+        regression, classification = batch_regression[0], batch_class[0]
+        positive_mask = regression[:, -1] == 1
+        positive_anchors = generator.anchors[positive_mask].astype(np.int32)
+        positive_class = classification[positive_mask]
+        print(np.all(positive_class))
+        for x1, y1, x2, y2 in positive_anchors:
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 1)
+
+        # gt
+        bboxes = annotations_group[0]['bboxes'].astype(np.int32)
+        vertexes = annotations_group[0]['vertexes'].astype(np.int32)
+        if bboxes.shape[0] != 0:
+            for x1, y1, x2, y2 in bboxes:
+                cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 1)
+            if vertexes.shape[0] != 0:
+                cv2.drawContours(image, vertexes, -1, (255, 255, 0), 1)
+
+        # cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+        # cv2.imshow('image', image)
+        # cv2.waitKey(0)
+
+
+if __name__ == '__main__':
+    # generator = CSVGenerator('datasets/train_quad/train_800_200.csv',
+    #                          'datasets/train_quad/classes.csv',
+    #                          batch_size=1, shuffle_groups=False)
+    generator = CSVGenerator('datasets/ic15/train.csv',
+                             'datasets/ic15/classes.csv',
+                             is_text=True,
+                             batch_size=1,
+                             phi=3,
+                             shuffle_groups=False)
+    # show_annotations(generator)
+    show_targets(generator)

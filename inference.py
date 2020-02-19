@@ -4,26 +4,28 @@ import os
 import numpy as np
 import time
 from utils import preprocess_image, rotate_image
-from utils.anchors import anchors_for_shape
+from utils.anchors import anchors_for_shape, AnchorParameters
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-phi = 0
-weighted_bifpn = True
-model_path = 'checkpoints/2020-02-16/csv_21_0.4456_0.3596.h5'
+phi = 3
+weighted_bifpn = False
+model_path = 'checkpoints/2020-02-19/csv_12_2.6342_3.5498.h5'
 image_sizes = (512, 640, 768, 896, 1024, 1280, 1408)
 image_size = image_sizes[phi]
 # classes = [
 #     'aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair',
 #     'cow', 'diningtable', 'dog', 'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor',
 # ]
-classes = ['vat']
+classes = ['text']
 num_classes = len(classes)
-score_threshold = 0.5
+num_anchors = len(AnchorParameters.default.ratios) * len(AnchorParameters.default.scales)
+score_threshold = 0.3
 colors = [np.random.randint(0, 256, 3).tolist() for i in range(num_classes)]
 model, prediction_model = efficientdet(phi=phi,
                                        weighted_bifpn=weighted_bifpn,
                                        num_classes=num_classes,
+                                       num_anchors=num_anchors,
                                        score_threshold=score_threshold)
 prediction_model.load_weights(model_path, by_name=True)
 ###
@@ -49,9 +51,9 @@ prediction_model.load_weights(model_path, by_name=True)
 ###
 
 import glob
-for image_path in glob.glob('datasets/train_quad/ele/*.jpg'):
+for image_path in glob.glob('datasets/ic15/test_images/*.jpg'):
     image = cv2.imread(image_path)
-    image = rotate_image(image)
+    # image = rotate_image(image)
     src_image = image.copy()
     image = image[:, :, ::-1]
     h, w = image.shape[:2]
@@ -61,9 +63,11 @@ for image_path in glob.glob('datasets/train_quad/ele/*.jpg'):
     anchors = anchors_for_shape((image_size, image_size))
     # run network
     start = time.time()
-    boxes, scores, alphas, labels = prediction_model.predict_on_batch([np.expand_dims(image, axis=0),
+    boxes, scores, alphas, ratios, labels = prediction_model.predict_on_batch([np.expand_dims(image, axis=0),
                                                                        np.expand_dims(anchors, axis=0)])
+    # alphas = np.exp(alphas)
     alphas = 1 / (1 + np.exp(-alphas))
+    ratios = 1 / (1 + np.exp(-ratios))
     vertexes = np.zeros(boxes.shape[:2] + (8, ))
     vertexes[:, :, 0] = boxes[:, :, 0] + (boxes[:, :, 2] - boxes[:, :, 0]) * alphas[:, :, 0]
     vertexes[:, :, 1] = boxes[:, :, 1]
@@ -97,8 +101,9 @@ for image_path in glob.glob('datasets/train_quad/ele/*.jpg'):
     scores = scores[0, indices]
     labels = labels[0, indices]
     vertexes = vertexes[0, indices]
+    ratios = ratios[0, indices]
 
-    for box, score, label, vertex in zip(boxes, scores, labels, vertexes):
+    for box, score, label, vertex, ratio in zip(boxes, scores, labels, vertexes, ratios):
         xmin = int(round(box[0]))
         ymin = int(round(box[1]))
         xmax = int(round(box[2]))
@@ -109,10 +114,12 @@ for image_path in glob.glob('datasets/train_quad/ele/*.jpg'):
         class_name = classes[class_id]
         label = '-'.join([class_name, score])
         ret, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        cv2.rectangle(src_image, (xmin, ymin), (xmax, ymax), color, 3)
-        cv2.rectangle(src_image, (xmin, ymax - ret[1] - baseline), (xmin + ret[0], ymax), color, -1)
-        cv2.putText(src_image, label, (xmin, ymax - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-        cv2.drawContours(src_image, [vertex.astype(np.int32).reshape((4, 2))], -1, color, 3)
+        cv2.rectangle(src_image, (xmin, ymin), (xmax, ymax), color, 1)
+        # cv2.rectangle(src_image, (xmin, ymax - ret[1] - baseline), (xmin + ret[0], ymax), color, -1)
+        # cv2.putText(src_image, label, (xmin, ymax - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        cv2.putText(src_image, f'{ratio:.2f}', ((xmin + xmax) // 2, (ymin + ymax) // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 2., (0, 0, 0), 1)
+        cv2.drawContours(src_image, [vertex.astype(np.int32).reshape((4, 2))], -1, (0, 0, 255), 1)
     cv2.namedWindow('image', cv2.WINDOW_NORMAL)
     cv2.imshow('image', src_image)
     cv2.waitKey(0)
