@@ -174,6 +174,7 @@ def create_generators(args):
             misc_effect=misc_effect,
             visual_effect=visual_effect,
             detect_text=args.detect_text,
+            detect_quadrangle=args.detect_quadrangle,
             **common_args
         )
 
@@ -183,6 +184,7 @@ def create_generators(args):
                 args.classes_path,
                 shuffle_groups=False,
                 detect_text=args.detect_text,
+                detect_quadrangle=args.detect_quadrangle,
                 **common_args
             )
         else:
@@ -343,7 +345,7 @@ def main(args=None):
             model.layers[i].trainable = False
 
     # compile model
-    model.compile(optimizer=Adam(lr=1e-3), loss={
+    model.compile(optimizer=Adam(lr=1e-4), loss={
         'regression': smooth_l1(),
         'classification': focal()
     }, )
@@ -365,7 +367,7 @@ def main(args=None):
     return model.fit_generator(
         generator=train_generator,
         steps_per_epoch=args.steps,
-        initial_epoch=50,
+        initial_epoch=82,
         epochs=args.epochs,
         verbose=1,
         callbacks=callbacks,

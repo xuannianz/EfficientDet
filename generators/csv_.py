@@ -430,6 +430,7 @@ if __name__ == '__main__':
     generator = CSVGenerator('datasets/ic15/train.csv',
                              'datasets/ic15/classes.csv',
                              detect_text=True,
+                             detect_quadrangle=True,
                              batch_size=1,
                              phi=3,
                              shuffle_groups=False,
