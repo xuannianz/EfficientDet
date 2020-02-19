@@ -166,10 +166,11 @@ def translation_xy(min=(0, 0), max=(0, 0), prob=0.5):
     random_prob = np.random.uniform()
     if random_prob < prob:
         # translation: the translation 2D vector
-        translation = random_vector(min=min, max=max)
+        dx = np.random.randint(min[0], max[0])
+        dy = np.random.randint(min[1], max[1])
         return np.array([
-            [1, 0, translation[0]],
-            [0, 1, translation[1]],
+            [1, 0, dx],
+            [0, 1, dy],
             [0, 0, 1]
         ])
     else:
