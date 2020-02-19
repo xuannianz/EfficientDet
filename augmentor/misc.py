@@ -1,16 +1,17 @@
 import cv2
 import numpy as np
 from augmentor.transform import translation_xy, change_transform_origin, scaling_xy
+from utils import reorder_vertexes
 
-ROTATE_DEGREE = [90, 180, 270]
 
+def rotate(image, annotations, prob=0.5, border_value=(128, 128, 128)):
+    assert 'bboxes' in annotations, 'annotations should has bboxes even if it is empty'
 
-def rotate(image, boxes, prob=0.5, border_value=(128, 128, 128)):
-    boxes = boxes.astype(np.float32)
     random_prob = np.random.uniform()
     if random_prob < (1 - prob):
-        return image, boxes
-    rotate_degree = ROTATE_DEGREE[np.random.randint(0, 3)]
+        return image, annotations
+
+    rotate_degree = np.random.uniform(low=-45, high=45)
     h, w = image.shape[:2]
     # Compute the rotation matrix.
     M = cv2.getRotationMatrix2D(center=(w / 2, h / 2),
@@ -30,19 +31,20 @@ def rotate(image, boxes, prob=0.5, border_value=(128, 128, 128)):
     M[1, 2] += new_h // 2 - h // 2
 
     # Rotate the image.
-    image = cv2.warpAffine(image, M=M, dsize=(new_w, new_h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT,
+    image = cv2.warpAffine(image, M=M, dsize=(new_w, new_h), flags=cv2.INTER_CUBIC,
+                           borderMode=cv2.BORDER_CONSTANT,
                            borderValue=border_value)
 
-    if boxes.shape[0] != 0:
-        new_boxes = []
-        for box in boxes:
-            x1, y1, x2, y2 = box
+    bboxes = annotations['bboxes']
+    if bboxes.shape[0] != 0:
+        new_bboxes = []
+        for bbox in bboxes:
+            x1, y1, x2, y2 = bbox
             points = M.dot([
                 [x1, x2, x1, x2],
                 [y1, y2, y2, y1],
                 [1, 1, 1, 1],
             ])
-
             # Extract the min and max corners again.
             min_xy = np.sort(points, axis=1)[:, :2]
             min_x = np.mean(min_xy[0])
@@ -50,78 +52,117 @@ def rotate(image, boxes, prob=0.5, border_value=(128, 128, 128)):
             max_xy = np.sort(points, axis=1)[:, 2:]
             max_x = np.mean(max_xy[0])
             max_y = np.mean(max_xy[1])
+            new_bboxes.append([min_x, min_y, max_x, max_y])
+        annotations['bboxes'] = np.array(new_bboxes, dtype=np.float32)
 
-            new_boxes.append([min_x, min_y, max_x, max_y])
-        boxes = np.array(new_boxes).astype(np.float32)
-    return image, boxes
+        if 'quadrangles' in annotations and annotations['quadrangles'].shape[0] != 0:
+            quadrangles = annotations['quadrangles']
+            rotated_quadrangles = []
+            for quadrangle in quadrangles:
+                quadrangle = np.concatenate([quadrangle, np.ones((4, 1))], axis=-1)
+                rotated_quadrangle = M.dot(quadrangle.T).T[:, :2]
+                quadrangle = reorder_vertexes(rotated_quadrangle)
+                rotated_quadrangles.append(quadrangle)
+            quadrangles = np.stack(rotated_quadrangles)
+            annotations['quadrangles'] = quadrangles
+            xmin = np.min(quadrangles, axis=1)[:, 0]
+            ymin = np.min(quadrangles, axis=1)[:, 1]
+            xmax = np.max(quadrangles, axis=1)[:, 0]
+            ymax = np.max(quadrangles, axis=1)[:, 1]
+            bboxes = np.stack([xmin, ymin, xmax, ymax], axis=1)
+            annotations['bboxes'] = bboxes
+    return image, annotations
 
 
-def crop(image, boxes, prob=0.5):
-    boxes = boxes.astype(np.float32)
+def crop(image, annotations, prob=0.5):
+    assert 'bboxes' in annotations, 'annotations should has bboxes even if it is empty'
+
     random_prob = np.random.uniform()
     if random_prob < (1 - prob):
-        return image, boxes
+        return image, annotations
     h, w = image.shape[:2]
-    if boxes.shape[0] != 0:
-        min_x1, min_y1 = np.min(boxes, axis=0)[:2]
-        max_x2, max_y2 = np.max(boxes, axis=0)[2:]
+    bboxes = annotations['bboxes']
+    if bboxes.shape[0] != 0:
+        min_x1, min_y1 = np.min(bboxes, axis=0)[:2]
+        max_x2, max_y2 = np.max(bboxes, axis=0)[2:]
         random_x1 = np.random.randint(0, max(min_x1 // 2, 1))
         random_y1 = np.random.randint(0, max(min_y1 // 2, 1))
         random_x2 = np.random.randint(max_x2 + 1, max(min(w, max_x2 + (w - max_x2) // 2), max_x2 + 2))
         random_y2 = np.random.randint(max_y2 + 1, max(min(h, max_y2 + (h - max_y2) // 2), max_y2 + 2))
         image = image[random_y1:random_y2, random_x1:random_x2]
-        boxes[:, [0, 2]] = boxes[:, [0, 2]] - random_x1
-        boxes[:, [1, 3]] = boxes[:, [1, 3]] - random_y1
-        boxes = boxes.astype(np.float32)
+        bboxes[:, [0, 2]] = bboxes[:, [0, 2]] - random_x1
+        bboxes[:, [1, 3]] = bboxes[:, [1, 3]] - random_y1
+        if 'quadrangles' in annotations and annotations['quadrangles'].shape[0] != 0:
+            quadrangles = annotations['quadrangles']
+            quadrangles[:, :, 0] = quadrangles[:, :, 0] - random_x1
+            quadrangles[:, :, 1] = quadrangles[:, :, 1] - random_y1
     else:
         random_x1 = np.random.randint(0, max(w // 8, 1))
         random_y1 = np.random.randint(0, max(h // 8, 1))
         random_x2 = np.random.randint(7 * w // 8, w - 1)
         random_y2 = np.random.randint(7 * h // 8, h - 1)
         image = image[random_y1:random_y2, random_x1:random_x2]
-    return image, boxes
+    return image, annotations
 
 
-def flipx(image, boxes, prob=0.5):
-    boxes = boxes.astype(np.float32)
+def flipx(image, annotations, prob=0.5):
+    assert 'bboxes' in annotations, 'annotations should has bboxes even if it is empty'
+
     random_prob = np.random.uniform()
     if random_prob < (1 - prob):
-        return image, boxes
-    image = image[:, ::-1]
+        return image, annotations
+    bboxes = annotations['bboxes']
     h, w = image.shape[:2]
-    if boxes.shape[0] != 0:
-        tmp = boxes[:, 0].copy()
-        boxes[:, 0] = w - 1 - boxes[:, 2]
-        boxes[:, 2] = w - 1 - tmp
-        boxes = boxes.astype(np.float32)
-    return image, boxes
+    image = image[:, ::-1]
+    if bboxes.shape[0] != 0:
+        tmp = bboxes.copy()
+        bboxes[:, 0] = w - 1 - bboxes[:, 2]
+        bboxes[:, 2] = w - 1 - tmp[:, 0]
+        if 'quadrangles' in annotations and annotations['quadrangles'].shape[0] != 0:
+            quadrangles = annotations['quadrangles']
+            tmp = quadrangles.copy()
+            quadrangles[:, 0, 0] = w - 1 - quadrangles[:, 0, 0]
+            quadrangles[:, 1, 0] = w - 1 - tmp[:, 3, 0]
+            quadrangles[:, 1, 1] = tmp[:, 3, 1]
+            quadrangles[:, 2, 0] = w - 1 - quadrangles[:, 2, 0]
+            quadrangles[:, 3, 0] = w - 1 - tmp[:, 1, 0]
+            quadrangles[:, 3, 1] = tmp[:, 1, 1]
+    return image, annotations
 
 
-def multi_scale(image, boxes, prob=1.):
-    boxes = boxes.astype(np.float32)
+def multi_scale(image, annotations, prob=1.):
+    assert 'bboxes' in annotations, 'annotations should has bboxes even if it is empty'
+
     random_prob = np.random.uniform()
     if random_prob < (1 - prob):
-        return image, boxes
+        return image, annotations
     h, w = image.shape[:2]
     scale = np.random.choice(np.arange(0.7, 1.4, 0.1))
     nh, nw = int(round(h * scale)), int(round(w * scale))
     image = cv2.resize(image, (nw, nh), interpolation=cv2.INTER_LINEAR)
-    if boxes.shape[0] != 0:
-        boxes = np.round(boxes * scale).astype(np.float32)
-    return image, boxes
+    bboxes = annotations['bboxes']
+    if bboxes.shape[0] != 0:
+        annotations['bboxes'] = np.round(bboxes * scale)
+        if 'quadrangles' in annotations and annotations['quadrangles'].shape[0] != 0:
+            quadrangles = annotations['quadrangles']
+            annotations['quadrangles'] = np.round(quadrangles * scale)
+    return image, annotations
 
 
-def translate(image, boxes, prob=0.5, border_value=(128, 128, 128)):
-    boxes = boxes.astype(np.float32)
+def translate(image, annotations, prob=0.5, border_value=(128, 128, 128)):
+    assert 'bboxes' in annotations, 'annotations should has bboxes even if it is empty'
+
     random_prob = np.random.uniform()
     if random_prob < (1 - prob):
-        return image, boxes
+        return image, annotations
     h, w = image.shape[:2]
-    if boxes.shape[0] != 0:
-        min_x1, min_y1 = np.min(boxes, axis=0)[:2].astype(np.int32)
-        max_x2, max_y2 = np.max(boxes, axis=0)[2:].astype(np.int32)
-        translation_matrix = translation_xy(min=(min(-min_x1 // 2, 0), min(-min_y1 // 2, 0)),
-                                            max=(max((w - max_x2) // 2, 1), max((h - max_y2) // 2, 1)), prob=1.)
+    bboxes = annotations['bboxes']
+    if bboxes.shape[0] != 0:
+        min_x1, min_y1 = np.min(bboxes, axis=0)[:2].astype(np.int32)
+        max_x2, max_y2 = np.max(bboxes, axis=0)[2:].astype(np.int32)
+        translation_matrix = translation_xy(min=(min(-(min_x1 // 2), 0), min(-(min_y1 // 2), 0)),
+                                            max=(max((w - 1 - max_x2) // 2, 1), max((h - 1 - max_y2) // 2, 1)),
+                                            prob=1.)
     else:
         translation_matrix = translation_xy(min=(min(-w // 8, 0), min(-h // 8, 0)),
                                             max=(max(w // 8, 1), max(h // 8, 1)))
@@ -134,10 +175,10 @@ def translate(image, boxes, prob=0.5, border_value=(128, 128, 128)):
         borderMode=cv2.BORDER_CONSTANT,
         borderValue=border_value,
     )
-    if boxes.shape[0] != 0:
-        new_boxes = []
-        for box in boxes:
-            x1, y1, x2, y2 = box
+    if bboxes.shape[0] != 0:
+        new_bboxes = []
+        for bbox in bboxes:
+            x1, y1, x2, y2 = bbox
             points = translation_matrix.dot([
                 [x1, x2, x1, x2],
                 [y1, y2, y2, y1],
@@ -145,9 +186,27 @@ def translate(image, boxes, prob=0.5, border_value=(128, 128, 128)):
             ])
             min_x, min_y = np.min(points, axis=1)[:2]
             max_x, max_y = np.max(points, axis=1)[:2]
-            new_boxes.append([min_x, min_y, max_x, max_y])
-        boxes = np.array(new_boxes).astype(np.float32)
-    return image, boxes
+            new_bboxes.append([min_x, min_y, max_x, max_y])
+        annotations['bboxes'] = np.array(new_bboxes).astype(np.float32)
+
+        if 'quadrangles' in annotations and annotations['quadrangles'].shape[0] != 0:
+            quadrangles = annotations['quadrangles']
+            translated_quadrangles = []
+            for quadrangle in quadrangles:
+                quadrangle = np.concatenate([quadrangle, np.ones((4, 1))], axis=-1)
+                translated_quadrangle = translation_matrix.dot(quadrangle.T).T[:, :2]
+                quadrangle = reorder_vertexes(translated_quadrangle)
+                translated_quadrangles.append(quadrangle)
+            quadrangles = np.stack(translated_quadrangles)
+            annotations['quadrangles'] = quadrangles
+            xmin = np.min(quadrangles, axis=1)[:, 0]
+            ymin = np.min(quadrangles, axis=1)[:, 1]
+            xmax = np.max(quadrangles, axis=1)[:, 0]
+            ymax = np.max(quadrangles, axis=1)[:, 1]
+            bboxes = np.stack([xmin, ymin, xmax, ymax], axis=1)
+            annotations['bboxes'] = bboxes
+
+    return image, annotations
 
 
 class MiscEffect:
@@ -160,49 +219,45 @@ class MiscEffect:
         self.translate_prob = translate_prob
         self.border_value = border_value
 
-    def __call__(self, image, boxes):
-        image, boxes = multi_scale(image, boxes, prob=self.multi_scale_prob)
-        image, boxes = rotate(image, boxes, prob=self.rotate_prob, border_value=self.border_value)
-        image, boxes = flipx(image, boxes, prob=self.flip_prob)
-        image, boxes = crop(image, boxes, prob=self.crop_prob)
-        image, boxes = translate(image, boxes, prob=self.translate_prob, border_value=self.border_value)
-        return image, boxes
+    def __call__(self, image, annotations):
+        # image, annotations = multi_scale(image, annotations, prob=self.multi_scale_prob)
+        # image, annotations = rotate(image, annotations, prob=self.rotate_prob, border_value=self.border_value)
+        image, annotations = flipx(image, annotations, prob=self.flip_prob)
+        image, annotations = crop(image, annotations, prob=self.crop_prob)
+        image, annotations = translate(image, annotations, prob=self.translate_prob, border_value=self.border_value)
+        return image, annotations
 
 
 if __name__ == '__main__':
-    # from generators.pascal import PascalVocGenerator
-    #
-    # train_generator = PascalVocGenerator(
-    #     'datasets/VOC0712',
-    #     'trainval',
-    #     skip_difficult=True,
-    #     batch_size=1,
-    #     shuffle_groups=False
-    # )
-    from generators.coco import CocoGenerator
+    from generators.csv_ import CSVGenerator
 
-    train_generator = CocoGenerator(
-        '/home/adam/.keras/datasets/coco/2017_118_5',
-        'train2017',
-        batch_size=1,
-        shuffle_groups=False
-    )
+    train_generator = CSVGenerator('datasets/ic15/train.csv',
+                                   'datasets/ic15/classes.csv',
+                                   detect_text=True,
+                                   batch_size=1,
+                                   phi=5,
+                                   shuffle_groups=False)
     misc_effect = MiscEffect()
     for i in range(train_generator.size()):
         image = train_generator.load_image(i)
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         annotations = train_generator.load_annotations(i)
-        boxes = annotations['bboxes']
-        for box in boxes.astype(np.int32):
-            cv2.rectangle(image, (box[0], box[1]), (box[2], box[3]), (0, 0, 255), 2)
+        boxes = annotations['bboxes'].astype(np.int32)
+        quadrangles = annotations['quadrangles'].astype(np.int32)
+        for box in boxes:
+            cv2.rectangle(image, (box[0], box[1]), (box[2], box[3]), (0, 0, 255), 1)
+        cv2.drawContours(image, quadrangles, -1, (0, 255, 255), 1)
         src_image = image.copy()
         # cv2.namedWindow('src_image', cv2.WINDOW_NORMAL)
         cv2.imshow('src_image', src_image)
-        image, boxes = misc_effect(image, boxes)
-        # image, boxes = multi_scale(image, boxes)
+        # image, annotations = misc_effect(image, annotations)
+        image, annotations = multi_scale(image, annotations, prob=1.)
         image = image.copy()
-        for box in boxes.astype(np.int32):
+        boxes = annotations['bboxes'].astype(np.int32)
+        quadrangles = annotations['quadrangles'].astype(np.int32)
+        for box in boxes:
             cv2.rectangle(image, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 1)
-        # cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+        cv2.drawContours(image, quadrangles, -1, (255, 255, 0), 1)
+        cv2.namedWindow('image', cv2.WINDOW_NORMAL)
         cv2.imshow('image', image)
         cv2.waitKey(0)

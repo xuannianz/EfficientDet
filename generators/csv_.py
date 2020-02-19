@@ -60,7 +60,7 @@ def _read_classes(csv_reader):
     return result
 
 
-def _read_annotations(csv_reader, classes, is_text=False):
+def _read_quadrangle_annotations(csv_reader, classes, detect_text=False):
     """
     Read annotations from the csv_reader.
     Args:
@@ -93,7 +93,7 @@ def _read_annotations(csv_reader, classes, is_text=False):
             y4 = _parse(y4, int, 'line {}: malformed y4: {{}}'.format(line))
 
             # check if the current class name is correctly present
-            if is_text:
+            if detect_text:
                 if class_name == '###':
                     continue
                 else:
@@ -107,6 +107,45 @@ def _read_annotations(csv_reader, classes, is_text=False):
         except ValueError:
             raise_from(ValueError(
                 f'line {line}: format should be \'img_file,x1,y1,x2,y2,x3,y3,x4,y4,class_name\' or \'img_file,,,,,\''),
+                None)
+
+    return result
+
+
+def _read_annotations(csv_reader, classes):
+    """
+    Read annotations from the csv_reader.
+    Args:
+        csv_reader: csv reader of args.annotations_path
+        classes: list[str] all the class names read from args.classes_path
+
+    Returns:
+        result: dict, dict is like {image_path: [{'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'class': class_name}]}
+
+    """
+    result = OrderedDict()
+    for line, row in enumerate(csv_reader, 1):
+        try:
+            img_file, x1, y1, x2, y2, class_name = row[:10]
+            if img_file not in result:
+                result[img_file] = []
+
+            # If a row contains only an image path, it's an image without annotations.
+            if (x1, y1, x2, y2, class_name) == ('', '', '', '', '', '', '', '', ''):
+                continue
+
+            x1 = _parse(x1, int, 'line {}: malformed x1: {{}}'.format(line))
+            y1 = _parse(y1, int, 'line {}: malformed y1: {{}}'.format(line))
+            x2 = _parse(x2, int, 'line {}: malformed x2: {{}}'.format(line))
+            y2 = _parse(y2, int, 'line {}: malformed y2: {{}}'.format(line))
+
+            if class_name not in classes:
+                raise ValueError(f'line {line}: unknown class name: \'{class_name}\' (classes: {classes})')
+
+            result[img_file].append({'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'class': class_name})
+        except ValueError:
+            raise_from(ValueError(
+                f'line {line}: format should be \'img_file,x1,y1,x2,y2,class_name\' or \'img_file,,,,,\''),
                 None)
 
     return result
@@ -136,7 +175,8 @@ class CSVGenerator(Generator):
             csv_data_file,
             csv_class_file,
             base_dir=None,
-            is_text=False,
+            detect_quadrangle=False,
+            detect_text=False,
             **kwargs
     ):
         """
@@ -145,13 +185,14 @@ class CSVGenerator(Generator):
         Args
             csv_data_file: Path to the CSV annotations file.
             csv_class_file: Path to the CSV classes file.
-            is_text: if is text annotations file
+            detect_text: if do text detection
             base_dir: Directory w.r.t. where the files are to be searched (defaults to the directory containing the csv_data_file).
         """
         self.image_names = []
         self.image_data = {}
         self.base_dir = base_dir
-        self.is_text = is_text
+        self.detect_quadrangle = detect_quadrangle
+        self.detect_text = detect_text
 
         # Take base_dir from annotations file if not explicitly specified.
         if self.base_dir is None:
@@ -177,12 +218,16 @@ class CSVGenerator(Generator):
         try:
             with _open_for_csv(csv_data_file) as file:
                 # {'img_path1':[{'x1':xx,'y1':xx,'x2':xx,'y2':xx,'x3':xx,'y3':xx,'x4':xx,'y4':xx, 'class':xx}...],...}
-                self.image_data = _read_annotations(csv.reader(file, delimiter=','), self.classes, self.is_text)
+                if self.detect_quadrangle:
+                    self.image_data = _read_quadrangle_annotations(csv.reader(file, delimiter=','), self.classes,
+                                                                   self.detect_text)
+                else:
+                    self.image_data = _read_annotations(csv.reader(file, delimiter=','), self.classes)
         except ValueError as e:
             raise_from(ValueError('invalid CSV annotations file: {}: {}'.format(csv_data_file, e)), None)
         self.image_names = list(self.image_data.keys())
 
-        super(CSVGenerator, self).__init__(**kwargs)
+        super(CSVGenerator, self).__init__(detect_text=detect_text, **kwargs)
 
     def size(self):
         """
@@ -249,17 +294,17 @@ class CSVGenerator(Generator):
         path = self.image_names[image_index]
         annotations = {'labels': np.empty((0,), dtype=np.int32),
                        'bboxes': np.empty((0, 4), dtype=np.float32),
-                       'vertexes': np.empty((0, 4, 2), dtype=np.float32),
+                       'quadrangles': np.empty((0, 4, 2), dtype=np.float32),
                        }
 
         for idx, annot in enumerate(self.image_data[path]):
             annotations['labels'] = np.concatenate((annotations['labels'], [self.name_to_label(annot['class'])]))
-            vertexes = np.array([[float(annot['x1']), float(annot['y1'])],
-                                 [float(annot['x2']), float(annot['y2'])],
-                                 [float(annot['x3']), float(annot['y3'])],
-                                 [float(annot['x4']), float(annot['y4'])]])
-            ordered_vertexes = self.reorder_vertexes(vertexes)
-            annotations['vertexes'] = np.concatenate((annotations['vertexes'], ordered_vertexes[None]))
+            quadrangle = np.array([[float(annot['x1']), float(annot['y1'])],
+                                   [float(annot['x2']), float(annot['y2'])],
+                                   [float(annot['x3']), float(annot['y3'])],
+                                   [float(annot['x4']), float(annot['y4'])]])
+            ordered_quadrangle = self.reorder_vertexes(quadrangle)
+            annotations['quadrangles'] = np.concatenate((annotations['quadrangles'], ordered_quadrangle[None]))
             annotations['bboxes'] = np.concatenate((annotations['bboxes'], [[
                 float(min(annot['x1'], annot['x2'], annot['x3'], annot['x4'])),
                 float(min(annot['y1'], annot['y2'], annot['y3'], annot['y4'])),
@@ -320,13 +365,14 @@ def show_annotations(generator):
         annotations = annotations_group[0]
         for i in range(annotations['bboxes'].shape[0]):
             bboxes = np.round(annotations['bboxes']).astype(np.int32)[i]
-            vertexes = np.round(annotations['vertexes']).astype(np.int32)[i]
+            quadrangles = np.round(annotations['quadrangles']).astype(np.int32)[i]
             alphas = annotations['alphas'][i]
             ratio = annotations['ratios'][i]
             cv2.rectangle(image, (bboxes[0], bboxes[1]), (bboxes[2], bboxes[3]), (0, 255, 0), 1)
-            cv2.drawContours(image, [vertexes], -1, (255, 0, 0), 1)
+            cv2.drawContours(image, [quadrangles], -1, (255, 0, 0), 1)
             for i, alpha in enumerate(alphas, 0):
-                cv2.putText(image, f'{i}-{alpha:.2f}', (vertexes[i][0], vertexes[i][1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                cv2.putText(image, f'{i}-{alpha:.2f}', (quadrangles[i][0], quadrangles[i][1]), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
                             (255, 0, 0), 1)
             cv2.putText(image, f'{ratio:.2f}', ((bboxes[0] + bboxes[2]) // 2, (bboxes[1] + bboxes[3]) // 2),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
@@ -363,27 +409,31 @@ def show_targets(generator):
 
         # gt
         bboxes = annotations_group[0]['bboxes'].astype(np.int32)
-        vertexes = annotations_group[0]['vertexes'].astype(np.int32)
+        quadrangles = annotations_group[0]['quadrangles'].astype(np.int32)
         if bboxes.shape[0] != 0:
             for x1, y1, x2, y2 in bboxes:
                 cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 1)
-            if vertexes.shape[0] != 0:
-                cv2.drawContours(image, vertexes, -1, (255, 255, 0), 1)
+            if quadrangles.shape[0] != 0:
+                cv2.drawContours(image, quadrangles, -1, (255, 255, 0), 1)
 
-        # cv2.namedWindow('image', cv2.WINDOW_NORMAL)
-        # cv2.imshow('image', image)
-        # cv2.waitKey(0)
+        cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+        cv2.imshow('image', image)
+        cv2.waitKey(0)
 
 
 if __name__ == '__main__':
     # generator = CSVGenerator('datasets/train_quad/train_800_200.csv',
     #                          'datasets/train_quad/classes.csv',
     #                          batch_size=1, shuffle_groups=False)
+    from augmentor.misc import MiscEffect
+
     generator = CSVGenerator('datasets/ic15/train.csv',
                              'datasets/ic15/classes.csv',
-                             is_text=True,
+                             detect_text=True,
                              batch_size=1,
                              phi=3,
-                             shuffle_groups=False)
+                             shuffle_groups=False,
+                             misc_effect=MiscEffect(multi_scale_prob=0., rotate_prob=0.)
+                             )
     # show_annotations(generator)
     show_targets(generator)

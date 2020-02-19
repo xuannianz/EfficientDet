@@ -16,11 +16,14 @@ class AnchorParameters:
         scales : List of scales to use per location in a feature map.
     """
 
-    def __init__(self, sizes, strides, ratios, scales):
+    def __init__(self, sizes=(32, 64, 128, 256, 512),
+                 strides=(8, 16, 32, 64, 128),
+                 ratios=(0.5, 1, 2),
+                 scales=(2 ** 0, 2 ** (1. / 3.), 2 ** (2. / 3.))):
         self.sizes = sizes
         self.strides = strides
-        self.ratios = ratios
-        self.scales = scales
+        self.ratios = np.array(ratios, dtype=keras.backend.floatx())
+        self.scales = np.array(scales, dtype=keras.backend.floatx())
 
     def num_anchors(self):
         return len(self.ratios) * len(self.scales)
@@ -30,10 +33,10 @@ class AnchorParameters:
 The default anchor parameters.
 """
 AnchorParameters.default = AnchorParameters(
-    sizes=[16, 32, 64, 128, 256],
+    sizes=[32, 64, 128, 256, 512],
     strides=[8, 16, 32, 64, 128],
     # ratio=h/w
-    ratios=np.array([0.25, 0.5, 1, 2], keras.backend.floatx()),
+    ratios=np.array([0.5, 1, 2], keras.backend.floatx()),
     scales=np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)], keras.backend.floatx()),
 )
 

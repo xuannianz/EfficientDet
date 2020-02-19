@@ -173,7 +173,7 @@ def create_generators(args):
             args.classes_path,
             misc_effect=misc_effect,
             visual_effect=visual_effect,
-            is_text=args.is_text,
+            detect_text=args.detect_text,
             **common_args
         )
 
@@ -182,7 +182,7 @@ def create_generators(args):
                 args.val_annotations_path,
                 args.classes_path,
                 shuffle_groups=False,
-                is_text=args.is_text,
+                detect_text=args.detect_text,
                 **common_args
             )
         else:
@@ -261,7 +261,8 @@ def parse_args(args):
     csv_parser.add_argument('classes_path', help='Path to a CSV file containing class label mapping.')
     csv_parser.add_argument('--val-annotations-path',
                             help='Path to CSV file containing annotations for validation (optional).')
-    csv_parser.add_argument('--is-text', help='If train on text annotations.', action='store_true', default=False)
+    csv_parser.add_argument('--detect-quadrangle', help='If to detect quadrangle.', action='store_true', default=False)
+    csv_parser.add_argument('--detect-text', help='If is text detection task.', action='store_true', default=False)
 
     parser.add_argument('--snapshot', help='Resume training from a snapshot.')
     parser.add_argument('--freeze-backbone', help='Freeze training of backbone layers.', action='store_true')
@@ -364,7 +365,7 @@ def main(args=None):
     return model.fit_generator(
         generator=train_generator,
         steps_per_epoch=args.steps,
-        initial_epoch=0,
+        initial_epoch=50,
         epochs=args.epochs,
         verbose=1,
         callbacks=callbacks,

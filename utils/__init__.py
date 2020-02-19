@@ -143,7 +143,7 @@ def reorder_vertexes(vertexes):
     """
     reorder vertexes as the paper shows, (top, right, bottom, left)
     Args:
-        vertexes:
+        vertexes: np.array (4, 2), should be in clockwise
 
     Returns:
 

@@ -21,6 +21,7 @@ class Generator(keras.utils.Sequence):
             batch_size=1,
             group_method='ratio',  # one of 'none', 'random', 'ratio'
             shuffle_groups=True,
+            detect_text=False,
     ):
         """
         Initialize Generator object.
@@ -36,10 +37,14 @@ class Generator(keras.utils.Sequence):
         self.batch_size = int(batch_size)
         self.group_method = group_method
         self.shuffle_groups = shuffle_groups
+        self.detect_text = detect_text
         self.image_size = image_sizes[phi]
         self.groups = None
-        self.anchors = anchors_for_shape((self.image_size, self.image_size))
-        self.num_anchors = len(AnchorParameters.default.ratios) * len(AnchorParameters.default.scales)
+        self.anchor_parameters = AnchorParameters.default if not self.detect_text else AnchorParameters(
+            ratios=(0.25, 0.5, 1., 2.),
+            sizes=(16, 32, 64, 128, 256))
+        self.anchors = anchors_for_shape((self.image_size, self.image_size), anchor_params=self.anchor_parameters)
+        self.num_anchors = self.anchor_parameters.num_anchors()
 
         # Define groups
         self.group_images()
@@ -248,9 +253,7 @@ class Generator(keras.utils.Sequence):
         Randomly transforms image and annotation.
         """
         # randomly transform both image and annotations
-        image, boxes = self.misc_effect(image, annotations['bboxes'])
-        # Transform the bounding boxes in the annotations.
-        annotations['bboxes'] = boxes
+        image, annotations = self.misc_effect(image, annotations)
         return image, annotations
 
     def random_misc_group(self, image_group, annotations_group):
@@ -282,9 +285,9 @@ class Generator(keras.utils.Sequence):
         annotations['bboxes'] *= scale
         annotations['bboxes'][:, [0, 2]] += offset_w
         annotations['bboxes'][:, [1, 3]] += offset_h
-        annotations['vertexes'] *= scale
-        annotations['vertexes'][:, :, 0] += offset_w
-        annotations['vertexes'][:, :, 1] += offset_h
+        annotations['quadrangles'] *= scale
+        annotations['quadrangles'][:, :, 0] += offset_w
+        annotations['quadrangles'][:, :, 1] += offset_h
         return image, annotations
 
     def preprocess_group(self, image_group, annotations_group):
@@ -325,17 +328,17 @@ class Generator(keras.utils.Sequence):
 
     def compute_alphas_and_ratios(self, annotations_group):
         for i, annotations in enumerate(annotations_group):
-            vertexes = annotations['vertexes']
-            alphas = np.zeros((vertexes.shape[0], 4), dtype=np.float32)
-            xmin = np.min(vertexes, axis=1)[:, 0]
-            ymin = np.min(vertexes, axis=1)[:, 1]
-            xmax = np.max(vertexes, axis=1)[:, 0]
-            ymax = np.max(vertexes, axis=1)[:, 1]
+            quadrangles = annotations['quadrangles']
+            alphas = np.zeros((quadrangles.shape[0], 4), dtype=np.float32)
+            xmin = np.min(quadrangles, axis=1)[:, 0]
+            ymin = np.min(quadrangles, axis=1)[:, 1]
+            xmax = np.max(quadrangles, axis=1)[:, 0]
+            ymax = np.max(quadrangles, axis=1)[:, 1]
             # alpha1, alpha2, alpha3, alpha4
-            alphas[:, 0] = (vertexes[:, 0, 0] - xmin) / (xmax - xmin)
-            alphas[:, 1] = (vertexes[:, 1, 1] - ymin) / (ymax - ymin)
-            alphas[:, 2] = (xmax - vertexes[:, 2, 0]) / (xmax - xmin)
-            alphas[:, 3] = (ymax - vertexes[:, 3, 1]) / (ymax - ymin)
+            alphas[:, 0] = (quadrangles[:, 0, 0] - xmin) / (xmax - xmin)
+            alphas[:, 1] = (quadrangles[:, 1, 1] - ymin) / (ymax - ymin)
+            alphas[:, 2] = (xmax - quadrangles[:, 2, 0]) / (xmax - xmin)
+            alphas[:, 3] = (ymax - quadrangles[:, 3, 1]) / (ymax - ymin)
             annotations['alphas'] = alphas
             # ratio
             area1 = 0.5 * alphas[:, 0] * (1 - alphas[:, 3])
@@ -380,7 +383,7 @@ class Generator(keras.utils.Sequence):
         # image_group, annotations_group = self.random_transform_group(image_group, annotations_group)
 
         # randomly apply misc effect
-        # image_group, annotations_group = self.random_misc_group(image_group, annotations_group)
+        image_group, annotations_group = self.random_misc_group(image_group, annotations_group)
 
         # randomly rotate data
         # image_group, annotations_group = self.rotate_group(image_group, annotations_group)
@@ -448,61 +451,6 @@ class Generator(keras.utils.Sequence):
         new_image[..., 1] /= std[1]
         new_image[..., 2] /= std[2]
         return new_image, scale, offset_h, offset_w
-
-    def rotate_group_entry(self, image, annotations):
-        vertexes = annotations['vertexes']
-        if np.random.uniform(0, 1) < 0.2:
-            return image, annotations
-        rotate_degree = np.random.uniform(low=-45, high=45)
-        h, w = image.shape[:2]
-        # Compute the rotation matrix.
-        M = cv2.getRotationMatrix2D(center=(w / 2, h / 2),
-                                    angle=rotate_degree,
-                                    scale=1)
-
-        # Get the sine and cosine from the rotation matrix.
-        abs_cos_angle = np.abs(M[0, 0])
-        abs_sin_angle = np.abs(M[0, 1])
-
-        # Compute the new bounding dimensions of the image.
-        new_w = int(h * abs_sin_angle + w * abs_cos_angle)
-        new_h = int(h * abs_cos_angle + w * abs_sin_angle)
-
-        # Adjust the rotation matrix to take into account the translation.
-        M[0, 2] += new_w // 2 - w // 2
-        M[1, 2] += new_h // 2 - h // 2
-
-        # Rotate the image.
-        image = cv2.warpAffine(image, M=M, dsize=(new_w, new_h), flags=cv2.INTER_CUBIC,
-                               borderMode=cv2.BORDER_CONSTANT,
-                               borderValue=(128, 128, 128))
-
-        if vertexes is not None and vertexes.shape[0] != 0:
-            rotated_vertexes = []
-            for vertex in vertexes:
-                vertex = np.concatenate([vertex, np.ones((4, 1))], axis=-1)
-                rotated_vertex = M.dot(vertex.T).T[:, :2]
-                vertex = self.reorder_vertexes(rotated_vertex)
-                rotated_vertexes.append(vertex)
-            vertexes = np.stack(rotated_vertexes)
-            annotations['vertexes'] = vertexes
-            xmin = np.min(vertexes, axis=1)[:, 0]
-            ymin = np.min(vertexes, axis=1)[:, 1]
-            xmax = np.max(vertexes, axis=1)[:, 0]
-            ymax = np.max(vertexes, axis=1)[:, 1]
-            boxes = np.stack([xmin, ymin, xmax, ymax], axis=1)
-            annotations['bboxes'] = boxes
-        return image, annotations
-
-    def rotate_group(self, image_group, annotations_group):
-        assert (len(image_group) == len(annotations_group))
-
-        for index in range(len(image_group)):
-            # preprocess a single group entry
-            image_group[index], annotations_group[index] = self.rotate_group_entry(image_group[index],
-                                                                                   annotations_group[index])
-
-        return image_group, annotations_group
 
     def get_augmented_data(self, group):
         """
