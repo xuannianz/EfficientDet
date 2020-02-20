@@ -299,18 +299,26 @@ class CSVGenerator(Generator):
 
         for idx, annot in enumerate(self.image_data[path]):
             annotations['labels'] = np.concatenate((annotations['labels'], [self.name_to_label(annot['class'])]))
-            quadrangle = np.array([[float(annot['x1']), float(annot['y1'])],
-                                   [float(annot['x2']), float(annot['y2'])],
-                                   [float(annot['x3']), float(annot['y3'])],
-                                   [float(annot['x4']), float(annot['y4'])]])
-            ordered_quadrangle = self.reorder_vertexes(quadrangle)
-            annotations['quadrangles'] = np.concatenate((annotations['quadrangles'], ordered_quadrangle[None]))
-            annotations['bboxes'] = np.concatenate((annotations['bboxes'], [[
-                float(min(annot['x1'], annot['x2'], annot['x3'], annot['x4'])),
-                float(min(annot['y1'], annot['y2'], annot['y3'], annot['y4'])),
-                float(max(annot['x1'], annot['x2'], annot['x3'], annot['x4'])),
-                float(max(annot['y1'], annot['y2'], annot['y3'], annot['y4'])),
-            ]]))
+            if self.detect_quadrangle:
+                quadrangle = np.array([[float(annot['x1']), float(annot['y1'])],
+                                       [float(annot['x2']), float(annot['y2'])],
+                                       [float(annot['x3']), float(annot['y3'])],
+                                       [float(annot['x4']), float(annot['y4'])]])
+                ordered_quadrangle = self.reorder_vertexes(quadrangle)
+                annotations['quadrangles'] = np.concatenate((annotations['quadrangles'], ordered_quadrangle[None]))
+                annotations['bboxes'] = np.concatenate((annotations['bboxes'], [[
+                    float(min(annot['x1'], annot['x2'], annot['x3'], annot['x4'])),
+                    float(min(annot['y1'], annot['y2'], annot['y3'], annot['y4'])),
+                    float(max(annot['x1'], annot['x2'], annot['x3'], annot['x4'])),
+                    float(max(annot['y1'], annot['y2'], annot['y3'], annot['y4'])),
+                ]]))
+            else:
+                annotations['bboxes'] = np.concatenate((annotations['bboxes'], [[
+                    float(annot['x1']),
+                    float(annot['y1']),
+                    float(annot['x2']),
+                    float(annot['y2']),
+                ]]))
 
         return annotations
 
@@ -347,3 +355,107 @@ class CSVGenerator(Generator):
         ordered_vertexes[2, 1] = ymax
         ordered_vertexes[3, 0] = xmin
         return ordered_vertexes
+
+
+def show_annotations(generator):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    for i, group in enumerate(generator.groups):
+        images_group, annotations_group = generator.get_augmented_data(group)
+        image = images_group[0]
+        image[..., 0] *= std[0]
+        image[..., 1] *= std[1]
+        image[..., 2] *= std[2]
+        image[..., 0] += mean[0]
+        image[..., 1] += mean[1]
+        image[..., 2] += mean[2]
+        image = (image * 255.).astype(np.uint8)[:, :, ::-1].copy()
+        annotations = annotations_group[0]
+        for i in range(annotations['bboxes'].shape[0]):
+            bboxes = np.round(annotations['bboxes']).astype(np.int32)[i]
+            quadrangles = np.round(annotations['quadrangles']).astype(np.int32)[i]
+            alphas = annotations['alphas'][i]
+            ratio = annotations['ratios'][i]
+            cv2.rectangle(image, (bboxes[0], bboxes[1]), (bboxes[2], bboxes[3]), (0, 255, 0), 1)
+            cv2.drawContours(image, [quadrangles], -1, (255, 0, 0), 1)
+            for i, alpha in enumerate(alphas, 0):
+                cv2.putText(image, f'{i}-{alpha:.2f}', (quadrangles[i][0], quadrangles[i][1]), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255, 0, 0), 1)
+            cv2.putText(image, f'{ratio:.2f}', ((bboxes[0] + bboxes[2]) // 2, (bboxes[1] + bboxes[3]) // 2),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+        cv2.imshow('image', image)
+        cv2.waitKey(0)
+
+
+def show_targets(generator):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    sum_no_matched = 0
+    for i, group in enumerate(generator.groups):
+        inputs, targets, annotations_group = generator.compute_inputs_targets(group, debug=True)
+
+        # image
+        image = inputs[0][0]
+        image[..., 0] *= std[0]
+        image[..., 1] *= std[1]
+        image[..., 2] *= std[2]
+        image[..., 0] += mean[0]
+        image[..., 1] += mean[1]
+        image[..., 2] += mean[2]
+        image = (image * 255.).astype(np.uint8)[:, :, ::-1].copy()
+
+        # anchor
+        batch_regression, batch_class, batch_argmax_gt_ids = targets
+        regression, classification = batch_regression[0], batch_class[0]
+        positive_mask = regression[:, -1] == 1
+        positive_anchors = generator.anchors[positive_mask].astype(np.int32)
+        for x1, y1, x2, y2 in positive_anchors:
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 1)
+
+        # gt
+        bboxes = annotations_group[0]['bboxes'].astype(np.int32)
+        quadrangles = annotations_group[0]['quadrangles'].astype(np.int32)
+        if bboxes.shape[0] != 0:
+            sum_no_matched += len(
+                set(range(bboxes.shape[0])) - set(np.unique(batch_argmax_gt_ids[0][positive_mask]).tolist()))
+            continue
+            for x1, y1, x2, y2 in bboxes:
+                cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 1)
+            if quadrangles.shape[0] != 0:
+                cv2.drawContours(image, quadrangles, -1, (255, 255, 0), 1)
+
+        # cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+        # cv2.imshow('image', image)
+        # cv2.waitKey(0)
+
+    print(f'sum_no_matched={sum_no_matched}')
+
+
+def get_best_ratios_and_scales(generator):
+    bboxes = np.zeros((0, 4), dtype=np.float32)
+    for i, group in enumerate(generator.groups):
+        images_group, annotations_group = generator.get_augmented_data(group)
+        bboxes = np.append(bboxes, annotations_group[0]['bboxes'], axis=0)
+    get_better_ratios_scales(generator.image_size, bboxes)
+
+
+if __name__ == '__main__':
+    # generator = CSVGenerator('datasets/train_quad/train_800_200.csv',
+    #                          'datasets/train_quad/classes.csv',
+    #                          batch_size=1, shuffle_groups=False)
+    from augmentor.misc import MiscEffect
+    from utils.anchors import get_better_ratios_scales
+
+    generator = CSVGenerator('datasets/ic15/train.csv',
+                             'datasets/ic15/classes.csv',
+                             detect_text=True,
+                             detect_quadrangle=True,
+                             batch_size=1,
+                             phi=3,
+                             shuffle_groups=False,
+                             )
+    # show_annotations(generator)
+    show_targets(generator)
+    # get_best_ratios_and_scales(generator)

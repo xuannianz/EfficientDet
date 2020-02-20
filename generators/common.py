@@ -4,7 +4,7 @@ import warnings
 import cv2
 from tensorflow import keras
 
-from utils.anchors import anchors_for_shape, anchor_targets_bbox, AnchorParameters
+from utils.anchors import anchors_for_shape, anchor_targets_bbox, AnchorParameters, get_better_ratios_scales
 
 
 class Generator(keras.utils.Sequence):
@@ -43,8 +43,11 @@ class Generator(keras.utils.Sequence):
         self.image_size = image_sizes[phi]
         self.groups = None
         self.anchor_parameters = AnchorParameters.default if not self.detect_text else AnchorParameters(
+            # ratios=(0.25, 0.47538694, 0.9848254, 2.7083065),
+            # scales=(0.54270921, 0.69379236, 0.85966968)
             ratios=(0.25, 0.5, 1., 2.),
-            sizes=(16, 32, 64, 128, 256))
+            # sizes=(16, 32, 64, 128, 256)
+        )
         self.anchors = anchors_for_shape((self.image_size, self.image_size), anchor_params=self.anchor_parameters)
         self.num_anchors = self.anchor_parameters.num_anchors()
 
@@ -350,7 +353,7 @@ class Generator(keras.utils.Sequence):
             area4 = 0.5 * alphas[:, 3] * (1 - alphas[:, 2])
             annotations['ratios'] = 1 - area1 - area2 - area3 - area4
 
-    def compute_targets(self, image_group, annotations_group):
+    def compute_targets(self, image_group, annotations_group, debug=False):
         """
         Compute target outputs for the network using images and their annotations.
         """
@@ -363,7 +366,8 @@ class Generator(keras.utils.Sequence):
             image_group,
             annotations_group,
             num_classes=self.num_classes(),
-            detect_quadrangle=self.detect_quadrangle
+            detect_quadrangle=self.detect_quadrangle,
+            debug=debug,
         )
         return list(batches_targets)
 
@@ -406,7 +410,7 @@ class Generator(keras.utils.Sequence):
         inputs = self.compute_inputs(image_group, annotations_group)
 
         # compute network targets
-        targets = self.compute_targets(image_group, annotations_group)
+        targets = self.compute_targets(image_group, annotations_group, debug=debug)
 
         if debug:
             return inputs, targets, annotations_group
@@ -486,6 +490,58 @@ class Generator(keras.utils.Sequence):
         assert len(image_group) == len(annotations_group)
 
         # compute alphas for targets
-        self.compute_alphas_and_ratios(annotations_group)
+        if self.detect_quadrangle:
+            self.compute_alphas_and_ratios(annotations_group)
 
         return image_group, annotations_group
+
+    def get_better_ratios_scales(self, only_base=True):
+        bboxes = np.zeros((0, 4), dtype=np.float32)
+        for i, group in enumerate(self.groups):
+            images_group, annotations_group = self.get_augmented_data(group)
+            bboxes = np.append(bboxes, annotations_group[0]['bboxes'], axis=0)
+        get_better_ratios_scales(self.image_size, bboxes, only_base=only_base)
+
+    def show_targets(self):
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
+        sum_no_matched = 0
+        for i, group in enumerate(self.groups):
+            inputs, targets, annotations_group = self.compute_inputs_targets(group, debug=True)
+
+            # image
+            image = inputs[0][0]
+            image[..., 0] *= std[0]
+            image[..., 1] *= std[1]
+            image[..., 2] *= std[2]
+            image[..., 0] += mean[0]
+            image[..., 1] += mean[1]
+            image[..., 2] += mean[2]
+            image = (image * 255.).astype(np.uint8)[:, :, ::-1].copy()
+
+            # anchor
+            batch_regression, batch_class, batch_argmax_gt_ids = targets
+            regression, classification = batch_regression[0], batch_class[0]
+            positive_mask = regression[:, -1] == 1
+            positive_anchors = self.anchors[positive_mask].astype(np.int32)
+            for x1, y1, x2, y2 in positive_anchors:
+                cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 1)
+
+            # gt
+            bboxes = annotations_group[0]['bboxes'].astype(np.int32)
+            if bboxes.shape[0] != 0:
+                sum_no_matched += len(
+                    set(range(bboxes.shape[0])) - set(np.unique(batch_argmax_gt_ids[0][positive_mask]).tolist()))
+                continue
+                for x1, y1, x2, y2 in bboxes:
+                    cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 1)
+                if self.detect_quadrangle:
+                    quadrangles = annotations_group[0]['quadrangles'].astype(np.int32)
+                    if quadrangles.shape[0] != 0:
+                        cv2.drawContours(image, quadrangles, -1, (255, 255, 0), 1)
+
+            # cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+            # cv2.imshow('image', image)
+            # cv2.waitKey(0)
+
+        print(f'sum_no_matched={sum_no_matched}')

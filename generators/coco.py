@@ -156,3 +156,93 @@ class CocoGenerator(Generator):
             ]]], axis=0)
 
         return annotations
+
+
+def show_annotations(generator):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    for i, group in enumerate(generator.groups):
+        images_group, annotations_group = generator.get_augmented_data(group)
+        image = images_group[0]
+        image[..., 0] *= std[0]
+        image[..., 1] *= std[1]
+        image[..., 2] *= std[2]
+        image[..., 0] += mean[0]
+        image[..., 1] += mean[1]
+        image[..., 2] += mean[2]
+        image = (image * 255.).astype(np.uint8)[:, :, ::-1].copy()
+        annotations = annotations_group[0]
+        for i in range(annotations['bboxes'].shape[0]):
+            bboxes = np.round(annotations['bboxes']).astype(np.int32)[i]
+            quadrangles = np.round(annotations['quadrangles']).astype(np.int32)[i]
+            alphas = annotations['alphas'][i]
+            ratio = annotations['ratios'][i]
+            cv2.rectangle(image, (bboxes[0], bboxes[1]), (bboxes[2], bboxes[3]), (0, 255, 0), 1)
+            cv2.drawContours(image, [quadrangles], -1, (255, 0, 0), 1)
+            for i, alpha in enumerate(alphas, 0):
+                cv2.putText(image, f'{i}-{alpha:.2f}', (quadrangles[i][0], quadrangles[i][1]), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255, 0, 0), 1)
+            cv2.putText(image, f'{ratio:.2f}', ((bboxes[0] + bboxes[2]) // 2, (bboxes[1] + bboxes[3]) // 2),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+        cv2.imshow('image', image)
+        cv2.waitKey(0)
+
+
+def show_targets(generator):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    for i, group in enumerate(generator.groups):
+        inputs, targets, annotations_group = generator.compute_inputs_targets(group, debug=True)
+
+        # image
+        image = inputs[0][0]
+        image[..., 0] *= std[0]
+        image[..., 1] *= std[1]
+        image[..., 2] *= std[2]
+        image[..., 0] += mean[0]
+        image[..., 1] += mean[1]
+        image[..., 2] += mean[2]
+        image = (image * 255.).astype(np.uint8)[:, :, ::-1].copy()
+
+        # anchor
+        batch_regression, batch_class, batch_argmax_overlaps_inds = targets
+        regression, classification, argmax_overlaps_inds = batch_regression[0], batch_class[0], batch_argmax_overlaps_inds[0]
+        positive_mask = regression[:, -1] == 1
+        positive_anchors = generator.anchors[positive_mask].astype(np.int32)
+        positive_gt_inds = argmax_overlaps_inds[positive_mask]
+        unique_gt_ids, gt_num_anchors = np.unique(positive_gt_inds, return_counts=True)
+        bboxes = annotations_group[0]['bboxes'].astype(np.int32)
+        for i in range(bboxes.shape[0]):
+            if i not in unique_gt_ids or gt_num_anchors[np.where(unique_gt_ids == i)[0][0]] < 5:
+                for x1, y1, x2, y2 in positive_anchors[positive_gt_inds == i]:
+                    cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 1)
+
+                # gt
+                x1, y1, x2, y2 = bboxes[i]
+                cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 1)
+                if generator.detect_quadrangle:
+                    quadrangles = annotations_group[0]['quadrangles'].astype(np.int32)
+                    cv2.drawContours(image, quadrangles[i], -1, (255, 255, 0), 1)
+
+        cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+        cv2.imshow('image', image)
+        cv2.waitKey(0)
+
+
+if __name__ == '__main__':
+    # generator = CSVGenerator('datasets/train_quad/train_800_200.csv',
+    #                          'datasets/train_quad/classes.csv',
+    #                          batch_size=1, shuffle_groups=False)
+    from augmentor.misc import MiscEffect
+
+    generator = CocoGenerator('datasets/coco',
+                              'train2017',
+                              batch_size=1,
+                              phi=0,
+                              shuffle_groups=False,
+                              )
+    # show_annotations(generator)
+    # show_targets(generator)
+    generator.get_better_ratios_scales(only_base=False)

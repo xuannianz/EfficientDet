@@ -1,7 +1,7 @@
 import numpy as np
 # import keras
 from tensorflow import keras
-
+from scipy.optimize import differential_evolution
 from utils.compute_overlap import compute_overlap
 
 
@@ -16,7 +16,8 @@ class AnchorParameters:
         scales : List of scales to use per location in a feature map.
     """
 
-    def __init__(self, sizes=(32, 64, 128, 256, 512),
+    def __init__(self,
+                 sizes=(32, 64, 128, 256, 512),
                  strides=(8, 16, 32, 64, 128),
                  ratios=(0.5, 1, 2),
                  scales=(2 ** 0, 2 ** (1. / 3.), 2 ** (2. / 3.))):
@@ -48,7 +49,8 @@ def anchor_targets_bbox(
         num_classes,
         negative_overlap=0.4,
         positive_overlap=0.5,
-        detect_quadrangle=False
+        detect_quadrangle=False,
+        debug=False
 ):
     """
     Generate anchor targets for bbox detection.
@@ -86,6 +88,9 @@ def anchor_targets_bbox(
         regression_batch = np.zeros((batch_size, anchors.shape[0], 4 + 1), dtype=np.float32)
     labels_batch = np.zeros((batch_size, anchors.shape[0], num_classes + 1), dtype=np.float32)
 
+    if debug:
+        argmax_overlaps_inds_batch = np.zeros((batch_size, anchors.shape[0]))
+
     # compute labels and regression targets
     for index, (image, annotations) in enumerate(zip(image_group, annotations_group)):
         if annotations['bboxes'].shape[0]:
@@ -114,6 +119,9 @@ def anchor_targets_bbox(
                 regression_batch[index, :, 4:8] = annotations['alphas'][argmax_overlaps_inds, :]
                 regression_batch[index, :, 8] = annotations['ratios'][argmax_overlaps_inds]
 
+            if debug:
+                argmax_overlaps_inds_batch[index] = argmax_overlaps_inds
+
         # ignore anchors outside of image
         if image.shape:
             anchors_centers = np.vstack([(anchors[:, 0] + anchors[:, 2]) / 2, (anchors[:, 1] + anchors[:, 3]) / 2]).T
@@ -121,6 +129,8 @@ def anchor_targets_bbox(
 
             labels_batch[index, indices, -1] = -1
             regression_batch[index, indices, -1] = -1
+    if debug:
+        return regression_batch, labels_batch, argmax_overlaps_inds_batch
 
     return regression_batch, labels_batch
 
@@ -226,6 +236,7 @@ def anchors_for_shape(
         pyramid_levels=None,
         anchor_params=None,
         shapes_callback=None,
+        only_base=False,
 ):
     """
     Generators anchors for a given shape.
@@ -235,6 +246,7 @@ def anchors_for_shape(
         pyramid_levels: List of ints representing which pyramids to use (defaults to [3, 4, 5, 6, 7]).
         anchor_params: Struct containing anchor parameters. If None, default values are used.
         shapes_callback: Function to call for getting the shape of the image at different pyramid levels.
+        only_base: Only return base anchors.
 
     Returns
         np.array of shape (N, 4) containing the (x1, y1, x2, y2) coordinates for the anchors.
@@ -252,15 +264,18 @@ def anchors_for_shape(
 
     # compute anchors over all pyramid levels
     all_anchors = np.zeros((0, 4), dtype=np.float32)
+    base_anchors = np.zeros((0, 4), dtype=np.float32)
     for idx, p in enumerate(pyramid_levels):
         anchors = generate_anchors(
             base_size=anchor_params.sizes[idx],
             ratios=anchor_params.ratios,
             scales=anchor_params.scales
         )
+        base_anchors = np.append(base_anchors, anchors, axis=0)
         shifted_anchors = shift(feature_map_shapes[idx], anchor_params.strides[idx], anchors)
         all_anchors = np.append(all_anchors, shifted_anchors, axis=0)
-
+    if only_base:
+        return base_anchors
     return all_anchors.astype(np.float32)
 
 
@@ -382,3 +397,43 @@ def bbox_transform(anchors, gt_boxes, mean=None, std=None):
     targets = (targets - mean) / std
 
     return targets
+
+
+def update_default_anchor_params(values, num_ratios):
+    ratios = values[:num_ratios]
+    scales = values[num_ratios:]
+    AnchorParameters.default.ratios = np.array(ratios)
+    AnchorParameters.default.scales = np.array(scales)
+
+
+def compute_overlap_loss(values, bboxes, num_ratios, image_shape, only_base=True):
+    update_default_anchor_params(values, num_ratios)
+    anchors = anchors_for_shape(image_shape, only_base=only_base)
+    overlaps = compute_overlap(anchors, bboxes)
+    # 每一个元素表示一个 bbox 和所有 anchors 的最大 overlap
+    max_overlaps = np.max(overlaps, axis=0)
+    # 这种方式更加突出那些较小的数, 如果 (0.5, 0.5) 的效果要比 (0.4, 0.6) 要好,
+    loss = np.average(-(1 - max_overlaps) ** 2 * np.log(max_overlaps))
+    not_matched = np.sum(max_overlaps < 0.5)
+    print(f'loss={loss:.2f}, not_matched={not_matched}')
+    return loss
+
+
+def get_better_ratios_scales(image_size, bboxes, num_ratios=3, num_scales=3, only_base=True):
+    assert num_ratios % 2 == 1
+    if only_base:
+        bboxes_w = bboxes[:, 2] - bboxes[:, 0]
+        bboxes_h = bboxes[:, 3] - bboxes[:, 1]
+        bboxes = np.stack([-bboxes_w / 2, -bboxes_h / 2, bboxes_w / 2, bboxes_h], axis=1)
+    # 一对 (min, max) 对应一个输出的值
+    bounds = [(0.125, 8)] * num_ratios
+    bounds.extend([(0.5, 2)] * num_scales)
+    result = differential_evolution(compute_overlap_loss, bounds, (bboxes, num_ratios,
+                                                                   (image_size, image_size),
+                                                                   only_base),
+                                    maxiter=10000,
+                                    seed=24)
+    print(result.x)
+    print(AnchorParameters.default.ratios)
+    print(AnchorParameters.default.scales)
+    print(result.success)
