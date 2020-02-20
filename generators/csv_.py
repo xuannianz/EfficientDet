@@ -299,19 +299,26 @@ class CSVGenerator(Generator):
 
         for idx, annot in enumerate(self.image_data[path]):
             annotations['labels'] = np.concatenate((annotations['labels'], [self.name_to_label(annot['class'])]))
-            quadrangle = np.array([[float(annot['x1']), float(annot['y1'])],
-                                   [float(annot['x2']), float(annot['y2'])],
-                                   [float(annot['x3']), float(annot['y3'])],
-                                   [float(annot['x4']), float(annot['y4'])]])
-            ordered_quadrangle = self.reorder_vertexes(quadrangle)
-            annotations['quadrangles'] = np.concatenate((annotations['quadrangles'], ordered_quadrangle[None]))
-            annotations['bboxes'] = np.concatenate((annotations['bboxes'], [[
-                float(min(annot['x1'], annot['x2'], annot['x3'], annot['x4'])),
-                float(min(annot['y1'], annot['y2'], annot['y3'], annot['y4'])),
-                float(max(annot['x1'], annot['x2'], annot['x3'], annot['x4'])),
-                float(max(annot['y1'], annot['y2'], annot['y3'], annot['y4'])),
-            ]]))
-
+            if self.detect_quadrangle:
+                quadrangle = np.array([[float(annot['x1']), float(annot['y1'])],
+                                       [float(annot['x2']), float(annot['y2'])],
+                                       [float(annot['x3']), float(annot['y3'])],
+                                       [float(annot['x4']), float(annot['y4'])]])
+                ordered_quadrangle = self.reorder_vertexes(quadrangle)
+                annotations['quadrangles'] = np.concatenate((annotations['quadrangles'], ordered_quadrangle[None]))
+                annotations['bboxes'] = np.concatenate((annotations['bboxes'], [[
+                    float(min(annot['x1'], annot['x2'], annot['x3'], annot['x4'])),
+                    float(min(annot['y1'], annot['y2'], annot['y3'], annot['y4'])),
+                    float(max(annot['x1'], annot['x2'], annot['x3'], annot['x4'])),
+                    float(max(annot['y1'], annot['y2'], annot['y3'], annot['y4'])),
+                ]]))
+            else:
+                annotations['bboxes'] = np.concatenate((annotations['bboxes'], [[
+                    float(annot['x1']),
+                    float(annot['y1']),
+                    float(annot['x2']),
+                    float(annot['y2']),
+                ]]))
         return annotations
 
     def reorder_vertexes(self, vertexes):
