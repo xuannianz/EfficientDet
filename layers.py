@@ -168,13 +168,14 @@ class RegressBoxes(keras.layers.Layer):
 def filter_detections(
         boxes,
         classification,
-        alphas,
-        ratios,
+        alphas=None,
+        ratios=None,
         class_specific_filter=True,
         nms=True,
         score_threshold=0.01,
         max_detections=300,
-        nms_threshold=0.5
+        nms_threshold=0.5,
+        detect_quadrangle=False,
 ):
     """
     Filter detections using the boxes and classification values.
@@ -262,27 +263,30 @@ def filter_detections(
     # filter input using the final set of indices
     indices = keras.backend.gather(indices[:, 0], top_indices)
     boxes = keras.backend.gather(boxes, indices)
-    alphas = keras.backend.gather(alphas, indices)
-    ratios = keras.backend.gather(ratios, indices)
     labels = keras.backend.gather(labels, top_indices)
 
     # zero pad the outputs
     pad_size = keras.backend.maximum(0, max_detections - keras.backend.shape(scores)[0])
     boxes = tf.pad(boxes, [[0, pad_size], [0, 0]], constant_values=-1)
-    alphas = tf.pad(alphas, [[0, pad_size], [0, 0]], constant_values=-1)
-    ratios = tf.pad(ratios, [[0, pad_size]], constant_values=-1)
     scores = tf.pad(scores, [[0, pad_size]], constant_values=-1)
     labels = tf.pad(labels, [[0, pad_size]], constant_values=-1)
     labels = keras.backend.cast(labels, 'int32')
 
     # set shapes, since we know what they are
     boxes.set_shape([max_detections, 4])
-    alphas.set_shape([max_detections, 4])
-    ratios.set_shape([max_detections])
     scores.set_shape([max_detections])
     labels.set_shape([max_detections])
 
-    return [boxes, scores, alphas, ratios, labels]
+    if detect_quadrangle:
+        alphas = keras.backend.gather(alphas, indices)
+        ratios = keras.backend.gather(ratios, indices)
+        alphas = tf.pad(alphas, [[0, pad_size], [0, 0]], constant_values=-1)
+        ratios = tf.pad(ratios, [[0, pad_size]], constant_values=-1)
+        alphas.set_shape([max_detections, 4])
+        ratios.set_shape([max_detections])
+        return [boxes, scores, alphas, ratios, labels]
+    else:
+        return [boxes, scores, labels]
 
 
 class FilterDetections(keras.layers.Layer):
@@ -298,6 +302,7 @@ class FilterDetections(keras.layers.Layer):
             score_threshold=0.01,
             max_detections=300,
             parallel_iterations=32,
+            detect_quadrangle=False,
             **kwargs
     ):
         """
@@ -317,6 +322,7 @@ class FilterDetections(keras.layers.Layer):
         self.score_threshold = score_threshold
         self.max_detections = max_detections
         self.parallel_iterations = parallel_iterations
+        self.detect_quadrangle = detect_quadrangle
         super(FilterDetections, self).__init__(**kwargs)
 
     def call(self, inputs, **kwargs):
@@ -328,15 +334,16 @@ class FilterDetections(keras.layers.Layer):
         """
         boxes = inputs[0]
         classification = inputs[1]
-        alphas = inputs[2]
-        ratios = inputs[3]
+        if self.detect_quadrangle:
+            alphas = inputs[2]
+            ratios = inputs[3]
 
         # wrap nms with our parameters
         def _filter_detections(args):
             boxes_ = args[0]
             classification_ = args[1]
-            alphas_ = args[2]
-            ratios_ = args[3]
+            alphas_ = args[2] if self.detect_quadrangle else None
+            ratios_ = args[3] if self.detect_quadrangle else None
 
             return filter_detections(
                 boxes_,
@@ -348,15 +355,24 @@ class FilterDetections(keras.layers.Layer):
                 score_threshold=self.score_threshold,
                 max_detections=self.max_detections,
                 nms_threshold=self.nms_threshold,
+                detect_quadrangle=self.detect_quadrangle,
             )
 
         # call filter_detections on each batch item
-        outputs = tf.map_fn(
-            _filter_detections,
-            elems=[boxes, classification, alphas, ratios],
-            dtype=['float32', 'float32', 'float32', 'float32', 'int32'],
-            parallel_iterations=self.parallel_iterations
-        )
+        if self.detect_quadrangle:
+            outputs = tf.map_fn(
+                _filter_detections,
+                elems=[boxes, classification, alphas, ratios],
+                dtype=['float32', 'float32', 'float32', 'float32', 'int32'],
+                parallel_iterations=self.parallel_iterations
+            )
+        else:
+            outputs = tf.map_fn(
+                _filter_detections,
+                elems=[boxes, classification],
+                dtype=['float32', 'float32', 'int32'],
+                parallel_iterations=self.parallel_iterations
+            )
 
         return outputs
 
@@ -371,13 +387,20 @@ class FilterDetections(keras.layers.Layer):
             List of tuples representing the output shapes:
             [filtered_boxes.shape, filtered_scores.shape, filtered_labels.shape, filtered_other[0].shape, filtered_other[1].shape, ...]
         """
-        return [
-            (input_shape[0][0], self.max_detections, 4),
-            (input_shape[1][0], self.max_detections),
-            (input_shape[1][0], self.max_detections, 4),
-            (input_shape[1][0], self.max_detections),
-            (input_shape[1][0], self.max_detections),
-        ]
+        if self.detect_quadrangle:
+            return [
+                (input_shape[0][0], self.max_detections, 4),
+                (input_shape[1][0], self.max_detections),
+                (input_shape[1][0], self.max_detections, 4),
+                (input_shape[1][0], self.max_detections),
+                (input_shape[1][0], self.max_detections),
+            ]
+        else:
+            return [
+                (input_shape[0][0], self.max_detections, 4),
+                (input_shape[1][0], self.max_detections),
+                (input_shape[1][0], self.max_detections),
+            ]
 
     def compute_mask(self, inputs, mask=None):
         """

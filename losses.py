@@ -75,6 +75,53 @@ def focal(alpha=0.25, gamma=1.5):
 def smooth_l1(sigma=3.0):
     """
     Create a smooth L1 loss functor.
+    Args
+        sigma: This argument defines the point where the loss changes from L2 to L1.
+    Returns
+        A functor for computing the smooth L1 loss given target data and predicted data.
+    """
+    sigma_squared = sigma ** 2
+
+    def _smooth_l1(y_true, y_pred):
+        """ Compute the smooth L1 loss of y_pred w.r.t. y_true.
+        Args
+            y_true: Tensor from the generator of shape (B, N, 5). The last value for each box is the state of the anchor (ignore, negative, positive).
+            y_pred: Tensor from the network of shape (B, N, 4).
+        Returns
+            The smooth L1 loss of y_pred w.r.t. y_true.
+        """
+        # separate target and state
+        regression = y_pred
+        regression_target = y_true[:, :, :-1]
+        anchor_state = y_true[:, :, -1]
+
+        # filter out "ignore" anchors
+        indices = tf.where(keras.backend.equal(anchor_state, 1))
+        regression = tf.gather_nd(regression, indices)
+        regression_target = tf.gather_nd(regression_target, indices)
+
+        # compute smooth L1 loss
+        # f(x) = 0.5 * (sigma * x)^2          if |x| < 1 / sigma / sigma
+        #        |x| - 0.5 / sigma / sigma    otherwise
+        regression_diff = regression - regression_target
+        regression_diff = keras.backend.abs(regression_diff)
+        regression_loss = tf.where(
+            keras.backend.less(regression_diff, 1.0 / sigma_squared),
+            0.5 * sigma_squared * keras.backend.pow(regression_diff, 2),
+            regression_diff - 0.5 / sigma_squared
+        )
+
+        # compute the normalizer: the number of positive anchors
+        normalizer = keras.backend.maximum(1, keras.backend.shape(indices)[0])
+        normalizer = keras.backend.cast(normalizer, dtype=keras.backend.floatx())
+        return keras.backend.sum(regression_loss) / normalizer
+
+    return _smooth_l1
+
+
+def smooth_l1_quad(sigma=3.0):
+    """
+    Create a smooth L1 loss functor.
 
     Args
         sigma: This argument defines the point where the loss changes from L2 to L1.
@@ -115,12 +162,6 @@ def smooth_l1(sigma=3.0):
             0.5 * sigma_squared * keras.backend.pow(regression_diff[..., :4], 2),
             regression_diff[..., :4] - 0.5 / sigma_squared
         )
-        # area1 = 0.5 * regression_target[..., 4:5] * (1 - regression_target[..., 7:8])
-        # area2 = 0.5 * regression_target[..., 5:6] * (1 - regression_target[..., 4:5])
-        # area3 = 0.5 * regression_target[..., 6:7] * (1 - regression_target[..., 5:6])
-        # area4 = 0.5 * regression_target[..., 7:8] * (1 - regression_target[..., 6:7])
-        # ratio = (1 - area1 - area2 - area3 - area4)
-        # ratio = tf.tile(ratio, (1, 4))
 
         alpha_regression_loss = tf.where(
             keras.backend.less(regression_diff[..., 4:8], 1.0 / sigma_squared),
@@ -140,13 +181,6 @@ def smooth_l1(sigma=3.0):
         box_regression_loss = tf.reduce_sum(box_regression_loss) / normalizer
         alpha_regression_loss = tf.reduce_sum(alpha_regression_loss) / normalizer
         ratio_regression_loss = tf.reduce_sum(ratio_regression_loss) / normalizer
-
-        box_regression_loss = tf.Print(box_regression_loss, [box_regression_loss], '\nbox_regression_loss',
-                                       summarize=1000)
-        alpha_regression_loss = tf.Print(alpha_regression_loss, [alpha_regression_loss], '\nalpha_regression_loss',
-                                         summarize=1000)
-        ratio_regression_loss = tf.Print(ratio_regression_loss, [ratio_regression_loss], '\nratio_regression_loss',
-                                         summarize=1000)
 
         return box_regression_loss + alpha_regression_loss + 16 * ratio_regression_loss
 

@@ -32,7 +32,7 @@ from tensorflow.keras.optimizers import Adam, SGD
 from augmentor.color import VisualEffect
 from augmentor.misc import MiscEffect
 from model import efficientdet
-from losses import smooth_l1, focal
+from losses import smooth_l1, focal, smooth_l1_quad
 from efficientnet import BASE_WEIGHTS_PATH, WEIGHTS_HASHES
 
 
@@ -138,6 +138,8 @@ def create_generators(args):
     common_args = {
         'batch_size': args.batch_size,
         'phi': args.phi,
+        'detect_text': args.detect_text,
+        'detect_quadrangle': args.detect_quadrangle
     }
 
     # create random transform generator for augmenting training data
@@ -173,8 +175,6 @@ def create_generators(args):
             args.classes_path,
             misc_effect=misc_effect,
             visual_effect=visual_effect,
-            detect_text=args.detect_text,
-            detect_quadrangle=args.detect_quadrangle,
             **common_args
         )
 
@@ -183,8 +183,6 @@ def create_generators(args):
                 args.val_annotations_path,
                 args.classes_path,
                 shuffle_groups=False,
-                detect_text=args.detect_text,
-                detect_quadrangle=args.detect_quadrangle,
                 **common_args
             )
         else:
@@ -263,8 +261,8 @@ def parse_args(args):
     csv_parser.add_argument('classes_path', help='Path to a CSV file containing class label mapping.')
     csv_parser.add_argument('--val-annotations-path',
                             help='Path to CSV file containing annotations for validation (optional).')
-    csv_parser.add_argument('--detect-quadrangle', help='If to detect quadrangle.', action='store_true', default=False)
-    csv_parser.add_argument('--detect-text', help='If is text detection task.', action='store_true', default=False)
+    parser.add_argument('--detect-quadrangle', help='If to detect quadrangle.', action='store_true', default=False)
+    parser.add_argument('--detect-text', help='If is text detection task.', action='store_true', default=False)
 
     parser.add_argument('--snapshot', help='Resume training from a snapshot.')
     parser.add_argument('--freeze-backbone', help='Freeze training of backbone layers.', action='store_true')
@@ -321,7 +319,9 @@ def main(args=None):
                                            num_classes=num_classes,
                                            num_anchors=num_anchors,
                                            weighted_bifpn=args.weighted_bifpn,
-                                           freeze_bn=args.freeze_bn)
+                                           freeze_bn=args.freeze_bn,
+                                           detect_quadrangle=args.detect_quadrangle
+                                           )
 
     # load pretrained weights
     if args.snapshot:
@@ -345,8 +345,8 @@ def main(args=None):
             model.layers[i].trainable = False
 
     # compile model
-    model.compile(optimizer=Adam(lr=1e-4), loss={
-        'regression': smooth_l1(),
+    model.compile(optimizer=Adam(lr=1e-5), loss={
+        'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
         'classification': focal()
     }, )
 
@@ -367,7 +367,7 @@ def main(args=None):
     return model.fit_generator(
         generator=train_generator,
         steps_per_epoch=args.steps,
-        initial_epoch=82,
+        initial_epoch=0,
         epochs=args.epochs,
         verbose=1,
         callbacks=callbacks,

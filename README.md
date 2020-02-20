@@ -6,6 +6,9 @@ The pretrained EfficientNet weights files are downloaded from [Callidior/keras-a
 Thanks for their hard work.
 This project is released under the Apache License. Please take their licenses into consideration too when use this project.
 
+**Updates**
+- [Feb 2020] Support quadrangle detection. For details, please refer to [README_quad](README_quad.md)
+
 ## Train
 ### build dataset 
 1. Pascal VOC 

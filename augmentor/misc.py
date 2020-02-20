@@ -5,7 +5,7 @@ from utils import reorder_vertexes
 
 
 def rotate(image, annotations, prob=0.5, border_value=(128, 128, 128)):
-    assert 'bboxes' in annotations, 'annotations should has bboxes even if it is empty'
+    assert 'bboxes' in annotations, 'annotations should contain bboxes even if it is empty'
 
     random_prob = np.random.uniform()
     if random_prob < (1 - prob):
@@ -75,7 +75,7 @@ def rotate(image, annotations, prob=0.5, border_value=(128, 128, 128)):
 
 
 def crop(image, annotations, prob=0.5):
-    assert 'bboxes' in annotations, 'annotations should has bboxes even if it is empty'
+    assert 'bboxes' in annotations, 'annotations should contain bboxes even if it is empty'
 
     random_prob = np.random.uniform()
     if random_prob < (1 - prob):
@@ -106,7 +106,7 @@ def crop(image, annotations, prob=0.5):
 
 
 def flipx(image, annotations, prob=0.5):
-    assert 'bboxes' in annotations, 'annotations should has bboxes even if it is empty'
+    assert 'bboxes' in annotations, 'annotations should contain bboxes even if it is empty'
 
     random_prob = np.random.uniform()
     if random_prob < (1 - prob):
@@ -131,7 +131,7 @@ def flipx(image, annotations, prob=0.5):
 
 
 def multi_scale(image, annotations, prob=1.):
-    assert 'bboxes' in annotations, 'annotations should has bboxes even if it is empty'
+    assert 'bboxes' in annotations, 'annotations should contain bboxes even if it is empty'
 
     random_prob = np.random.uniform()
     if random_prob < (1 - prob):
@@ -150,7 +150,7 @@ def multi_scale(image, annotations, prob=1.):
 
 
 def translate(image, annotations, prob=0.5, border_value=(128, 128, 128)):
-    assert 'bboxes' in annotations, 'annotations should has bboxes even if it is empty'
+    assert 'bboxes' in annotations, 'annotations should contain bboxes even if it is empty'
 
     random_prob = np.random.uniform()
     if random_prob < (1 - prob):

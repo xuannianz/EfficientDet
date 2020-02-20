@@ -22,6 +22,7 @@ class Generator(keras.utils.Sequence):
             group_method='ratio',  # one of 'none', 'random', 'ratio'
             shuffle_groups=True,
             detect_text=False,
+            detect_quadrangle=False,
     ):
         """
         Initialize Generator object.
@@ -38,6 +39,7 @@ class Generator(keras.utils.Sequence):
         self.group_method = group_method
         self.shuffle_groups = shuffle_groups
         self.detect_text = detect_text
+        self.detect_quadrangle = detect_quadrangle
         self.image_size = image_sizes[phi]
         self.groups = None
         self.anchor_parameters = AnchorParameters.default if not self.detect_text else AnchorParameters(
@@ -285,9 +287,10 @@ class Generator(keras.utils.Sequence):
         annotations['bboxes'] *= scale
         annotations['bboxes'][:, [0, 2]] += offset_w
         annotations['bboxes'][:, [1, 3]] += offset_h
-        annotations['quadrangles'] *= scale
-        annotations['quadrangles'][:, :, 0] += offset_w
-        annotations['quadrangles'][:, :, 1] += offset_h
+        if self.detect_quadrangle:
+            annotations['quadrangles'] *= scale
+            annotations['quadrangles'][:, :, 0] += offset_w
+            annotations['quadrangles'][:, :, 1] += offset_h
         return image, annotations
 
     def preprocess_group(self, image_group, annotations_group):
@@ -359,7 +362,8 @@ class Generator(keras.utils.Sequence):
             self.anchors,
             image_group,
             annotations_group,
-            self.num_classes()
+            num_classes=self.num_classes(),
+            detect_quadrangle=self.detect_quadrangle
         )
         return list(batches_targets)
 
@@ -385,9 +389,6 @@ class Generator(keras.utils.Sequence):
         # randomly apply misc effect
         image_group, annotations_group = self.random_misc_group(image_group, annotations_group)
 
-        # randomly rotate data
-        # image_group, annotations_group = self.rotate_group(image_group, annotations_group)
-
         # perform preprocessing steps
         image_group, annotations_group = self.preprocess_group(image_group, annotations_group)
 
@@ -397,8 +398,9 @@ class Generator(keras.utils.Sequence):
         assert len(image_group) != 0
         assert len(image_group) == len(annotations_group)
 
-        # compute alphas and ratio for targets
-        self.compute_alphas_and_ratios(annotations_group)
+        if self.detect_quadrangle:
+            # compute alphas and ratio for targets
+            self.compute_alphas_and_ratios(annotations_group)
 
         # compute network inputs
         inputs = self.compute_inputs(image_group, annotations_group)
@@ -474,7 +476,6 @@ class Generator(keras.utils.Sequence):
         # randomly apply misc effect
         # image_group, annotations_group = self.random_misc_group(image_group, annotations_group)
 
-        # image_group, annotations_group = self.rotate_group(image_group, annotations_group)
         # perform preprocessing steps
         image_group, annotations_group = self.preprocess_group(image_group, annotations_group)
 

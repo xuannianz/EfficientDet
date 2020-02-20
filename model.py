@@ -149,7 +149,7 @@ def build_wBiFPN(features, num_channels, id, freeze_bn=False):
     return P3_out, P4_out, P5_out, P6_out, P7_out
 
 
-def build_regress_head(width, depth, num_anchors=9):
+def build_regress_head(width, depth, num_anchors=9, detect_quadrangle=False):
     options = {
         'kernel_size': 3,
         'strides': 1,
@@ -168,10 +168,14 @@ def build_regress_head(width, depth, num_anchors=9):
             **options
         )(outputs)
 
-    # obb: 4 -> 9
-    outputs = layers.Conv2D(num_anchors * 9, **options)(outputs)
-    # (b, num_anchors_this_feature_map, 4)
-    outputs = layers.Reshape((-1, 9))(outputs)
+    if detect_quadrangle:
+        outputs = layers.Conv2D(num_anchors * 9, **options)(outputs)
+        # (b, num_anchors_this_feature_map, 9)
+        outputs = layers.Reshape((-1, 9))(outputs)
+    else:
+        outputs = layers.Conv2D(num_anchors * 4, **options)(outputs)
+        # (b, num_anchors_this_feature_map, 4)
+        outputs = layers.Reshape((-1, 4))(outputs)
 
     return models.Model(inputs=inputs, outputs=outputs, name='box_head')
 
@@ -210,7 +214,9 @@ def build_class_head(width, depth, num_classes=20, num_anchors=9):
     return models.Model(inputs=inputs, outputs=outputs, name='class_head')
 
 
-def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freeze_bn=False, score_threshold=0.01):
+def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freeze_bn=False,
+                 score_threshold=0.01,
+                 detect_quadrangle=False):
     assert phi in range(7)
     input_size = image_sizes[phi]
     input_shape = (input_size, input_size, 3)
@@ -229,7 +235,7 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
     else:
         for i in range(d_bifpn):
             features = build_BiFPN(features, w_bifpn, i, freeze_bn=freeze_bn)
-    regress_head = build_regress_head(w_head, d_head, num_anchors=num_anchors)
+    regress_head = build_regress_head(w_head, d_head, num_anchors=num_anchors, detect_quadrangle=detect_quadrangle)
     class_head = build_class_head(w_head, d_head, num_classes=num_classes, num_anchors=num_anchors)
     regression = [regress_head(feature) for feature in features]
     regression = layers.Concatenate(axis=1, name='regression')(regression)
@@ -239,26 +245,23 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
     model = models.Model(inputs=[image_input], outputs=[regression, classification], name='efficientdet')
 
     # apply predicted regression to anchors
-    # anchors = tf.tile(tf.expand_dims(tf.constant(anchors), axis=0), (tf.shape(regression)[0], 1, 1))
+
     anchors_input = layers.Input((None, 4))
     boxes = RegressBoxes(name='boxes')([anchors_input, regression[..., :4]])
     boxes = ClipBoxes(name='clipped_boxes')([image_input, boxes])
 
     # filter detections (apply NMS / score threshold / select top-k)
-    detections = FilterDetections(
-        name='filtered_detections',
-        score_threshold=score_threshold
-    )([boxes, classification, regression[..., 4:8], regression[..., 8]])
+    if detect_quadrangle:
+        detections = FilterDetections(
+            name='filtered_detections',
+            score_threshold=score_threshold,
+            detect_quadrangle=True
+        )([boxes, classification, regression[..., 4:8], regression[..., 8]])
+    else:
+        detections = FilterDetections(
+            name='filtered_detections',
+            score_threshold=score_threshold
+        )([boxes, classification])
+
     prediction_model = models.Model(inputs=[image_input, anchors_input], outputs=detections, name='efficientdet_p')
     return model, prediction_model
-
-
-if __name__ == '__main__':
-    model, prediction_model = efficientdet(phi=3,
-                                           num_classes=1,
-                                           num_anchors=12,
-                                           weighted_bifpn=False,
-                                           freeze_bn=False)
-    model.summary()
-    for i, layer in enumerate(model.layers):
-        print(i, layer.name)

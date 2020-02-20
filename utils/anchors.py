@@ -47,7 +47,8 @@ def anchor_targets_bbox(
         annotations_group,
         num_classes,
         negative_overlap=0.4,
-        positive_overlap=0.5
+        positive_overlap=0.5,
+        detect_quadrangle=False
 ):
     """
     Generate anchor targets for bbox detection.
@@ -79,8 +80,10 @@ def anchor_targets_bbox(
 
     batch_size = len(image_group)
 
-    # obb: 4 -> 9
-    regression_batch = np.zeros((batch_size, anchors.shape[0], 9 + 1), dtype=np.float32)
+    if detect_quadrangle:
+        regression_batch = np.zeros((batch_size, anchors.shape[0], 9 + 1), dtype=np.float32)
+    else:
+        regression_batch = np.zeros((batch_size, anchors.shape[0], 4 + 1), dtype=np.float32)
     labels_batch = np.zeros((batch_size, anchors.shape[0], num_classes + 1), dtype=np.float32)
 
     # compute labels and regression targets
@@ -107,8 +110,9 @@ def anchor_targets_bbox(
                 index, positive_indices, annotations['labels'][argmax_overlaps_inds[positive_indices]].astype(int)] = 1
 
             regression_batch[index, :, :4] = bbox_transform(anchors, annotations['bboxes'][argmax_overlaps_inds, :])
-            regression_batch[index, :, 4:8] = annotations['alphas'][argmax_overlaps_inds, :]
-            regression_batch[index, :, 8] = annotations['ratios'][argmax_overlaps_inds]
+            if detect_quadrangle:
+                regression_batch[index, :, 4:8] = annotations['alphas'][argmax_overlaps_inds, :]
+                regression_batch[index, :, 8] = annotations['ratios'][argmax_overlaps_inds]
 
         # ignore anchors outside of image
         if image.shape:
@@ -153,8 +157,8 @@ def compute_gt_annotations(
     positive_indices = max_overlaps >= positive_overlap
 
     # adam: in case of there are gt boxes has no matched positive anchors
-    nonzero_inds = np.nonzero(overlaps == np.max(overlaps, axis=0))
-    positive_indices[nonzero_inds[0]] = 1
+    # nonzero_inds = np.nonzero(overlaps == np.max(overlaps, axis=0))
+    # positive_indices[nonzero_inds[0]] = 1
 
     # (N, )
     ignore_indices = (max_overlaps > negative_overlap) & ~positive_indices
