@@ -33,12 +33,9 @@ image = image[:, :, ::-1]
 h, w = image.shape[:2]
 
 image, scale, offset_h, offset_w = preprocess_image(image, image_size=image_size)
-inputs = np.expand_dims(image, axis=0)
-anchors = anchors_for_shape((image_size, image_size))
 # run network
 start = time.time()
-boxes, scores, labels = prediction_model.predict_on_batch([np.expand_dims(image, axis=0),
-                                                           np.expand_dims(anchors, axis=0)])
+boxes, scores, labels = prediction_model.predict_on_batch([np.expand_dims(image, axis=0)])
 print(time.time() - start)
 boxes[0, :, [0, 2]] = boxes[0, :, [0, 2]] - offset_w
 boxes[0, :, [1, 3]] = boxes[0, :, [1, 3]] - offset_h
