@@ -65,6 +65,6 @@ def main():
     cv2.imshow('image', src_image)
     cv2.waitKey(0)
 
-
 if __name__ == '__main__':
     main()
+
