@@ -1,13 +1,12 @@
-from model import efficientdet
-import cv2
 import os
+import cv2
 import numpy as np
-import time
+
+from model import efficientdet
 from utils import preprocess_image
 from utils.anchors import anchors_for_shape
 from utils.draw_boxes import draw_boxes
 from utils.post_process_boxes import post_process_boxes
-from utils.visualization import draw_detections
 
 
 def main():
