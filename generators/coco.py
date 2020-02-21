@@ -147,13 +147,14 @@ class CocoGenerator(Generator):
                 continue
 
             annotations['labels'] = np.concatenate(
-                [annotations['labels'], [self.coco_label_to_label(a['category_id'])]], axis=0)
-            annotations['bboxes'] = np.concatenate([annotations['bboxes'], [[
+                [annotations['labels'], np.array([self.coco_label_to_label(a['category_id'])], dtype=np.int32)],
+                axis=0)
+            annotations['bboxes'] = np.concatenate([annotations['bboxes'], np.array([[
                 a['bbox'][0],
                 a['bbox'][1],
                 a['bbox'][0] + a['bbox'][2],
                 a['bbox'][1] + a['bbox'][3],
-            ]]], axis=0)
+            ]], dtype=np.float32)], axis=0)
 
         return annotations
 
@@ -245,4 +246,4 @@ if __name__ == '__main__':
                               )
     # show_annotations(generator)
     # show_targets(generator)
-    generator.get_better_ratios_scales(only_base=False)
+    generator.get_better_ratios_scales(only_base=True)

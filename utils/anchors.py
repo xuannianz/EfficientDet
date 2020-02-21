@@ -156,7 +156,7 @@ def compute_gt_annotations(
         argmax_overlaps_inds: ordered overlaps indices, (N, )
     """
     # (N, K)
-    overlaps = compute_overlap(anchors.astype(np.float64), annotations.astype(np.float64))
+    overlaps = compute_overlap(anchors.astype(np.float32), annotations.astype(np.float32))
     # (N, )
     argmax_overlaps_inds = np.argmax(overlaps, axis=1)
     # (N, )
@@ -275,7 +275,7 @@ def anchors_for_shape(
         shifted_anchors = shift(feature_map_shapes[idx], anchor_params.strides[idx], anchors)
         all_anchors = np.append(all_anchors, shifted_anchors, axis=0)
     if only_base:
-        return base_anchors
+        return base_anchors.astype(np.float32)
     return all_anchors.astype(np.float32)
 
 
@@ -431,7 +431,6 @@ def get_better_ratios_scales(image_size, bboxes, num_ratios=3, num_scales=3, onl
     result = differential_evolution(compute_overlap_loss, bounds, (bboxes, num_ratios,
                                                                    (image_size, image_size),
                                                                    only_base),
-                                    maxiter=10000,
                                     seed=24)
     print(result.x)
     print(AnchorParameters.default.ratios)

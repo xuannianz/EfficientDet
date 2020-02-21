@@ -9,24 +9,26 @@ cimport cython
 import numpy as np
 cimport numpy as np
 
+DTYPE = np.float32
+ctypedef np.float32_t DTYPE_t
 
 def compute_overlap(
-    np.ndarray[double, ndim=2] boxes,
-    np.ndarray[double, ndim=2] query_boxes
-):
+        np.ndarray[DTYPE_t, ndim=2] boxes,
+        np.ndarray[DTYPE_t, ndim=2] query_boxes):
     """
-    Args
-        a: (N, 4) ndarray of float
-        b: (K, 4) ndarray of float
-
+    Parameters
+    ----------
+    boxes: (N, 4) ndarray of float32
+    query_boxes: (K, 4) ndarray of float32
     Returns
-        overlaps: (N, K) ndarray of overlap between boxes and query_boxes
+    -------
+    overlaps: (N, K) ndarray of overlap between boxes and query_boxes
     """
     cdef unsigned int N = boxes.shape[0]
     cdef unsigned int K = query_boxes.shape[0]
-    cdef np.ndarray[double, ndim=2] overlaps = np.zeros((N, K), dtype=np.float64)
-    cdef double iw, ih, box_area
-    cdef double ua
+    cdef np.ndarray[DTYPE_t, ndim=2] overlaps = np.zeros((N, K), dtype=DTYPE)
+    cdef DTYPE_t iw, ih, box_area
+    cdef DTYPE_t ua
     cdef unsigned int k, n
     for k in range(K):
         box_area = (
@@ -44,7 +46,7 @@ def compute_overlap(
                     max(boxes[n, 1], query_boxes[k, 1]) + 1
                 )
                 if ih > 0:
-                    ua = np.float64(
+                    ua = np.float32(
                         (boxes[n, 2] - boxes[n, 0] + 1) *
                         (boxes[n, 3] - boxes[n, 1] + 1) +
                         box_area - iw * ih

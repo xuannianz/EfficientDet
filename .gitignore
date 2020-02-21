@@ -112,3 +112,4 @@ checkpoints/
 tests/
 *test-dev*
 val2017*
+*.c
