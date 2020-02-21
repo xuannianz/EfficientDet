@@ -24,7 +24,7 @@ def main():
     ]
     num_classes = len(classes)
     score_threshold = 0.5
-    colors = [np.random.randint(0, 256, 3).tolist() for i in range(num_classes)]
+    colors = [np.random.randint(0, 256, 3).tolist() for _ in range(num_classes)]
     model, prediction_model = efficientdet(phi=phi,
                                            weighted_bifpn=weighted_bifpn,
                                            num_classes=num_classes,
