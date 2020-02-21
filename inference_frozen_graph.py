@@ -1,16 +1,14 @@
-from model import efficientdet
+import tensorflow as tf
+import numpy as np
 import cv2
 import os
-import numpy as np
 import time
 from utils import preprocess_image
-from utils.anchors import anchors_for_shape
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+from tensorflow.python.platform import gfile
 
 phi = 1
 weighted_bifpn = False
-model_path = 'checkpoints/2019-12-03/pascal_05_0.6283_1.1975_0.8029.h5'
+model_path = 'checkpoints/2019-12-03/pascal_05.pb'
 image_sizes = (512, 640, 768, 896, 1024, 1280, 1408)
 image_size = image_sizes[phi]
 classes = [
@@ -20,11 +18,21 @@ classes = [
 num_classes = len(classes)
 score_threshold = 0.5
 colors = [np.random.randint(0, 256, 3).tolist() for i in range(num_classes)]
-model, prediction_model = efficientdet(phi=phi,
-                                       weighted_bifpn=weighted_bifpn,
-                                       num_classes=num_classes,
-                                       score_threshold=score_threshold)
-prediction_model.load_weights(model_path, by_name=True)
+
+tf.reset_default_graph()
+sess = tf.Session()
+with tf.gfile.GFile(model_path, 'rb') as f:
+    graph_def = tf.GraphDef()
+    graph_def.ParseFromString(f.read())
+    sess.graph.as_default()
+    tf.import_graph_def(graph_def, name='')
+
+tensor_input = sess.graph.get_tensor_by_name('input_1:0')
+
+output_boxes = sess.graph.get_tensor_by_name('filtered_detections/map/TensorArrayStack/TensorArrayGatherV3:0')
+output_scores = sess.graph.get_tensor_by_name('filtered_detections/map/TensorArrayStack_1/TensorArrayGatherV3:0')
+output_labels = sess.graph.get_tensor_by_name('filtered_detections/map/TensorArrayStack_2/TensorArrayGatherV3:0')
+
 
 image_path = 'datasets/VOC2007/JPEGImages/000002.jpg'
 image = cv2.imread(image_path)
@@ -35,7 +43,7 @@ h, w = image.shape[:2]
 image, scale, offset_h, offset_w = preprocess_image(image, image_size=image_size)
 # run network
 start = time.time()
-boxes, scores, labels = prediction_model.predict_on_batch([np.expand_dims(image, axis=0)])
+boxes, scores, labels = sess.run([output_boxes, output_scores, output_labels], {tensor_input:[image]})
 print(time.time() - start)
 boxes[0, :, [0, 2]] = boxes[0, :, [0, 2]] - offset_w
 boxes[0, :, [1, 3]] = boxes[0, :, [1, 3]] - offset_h

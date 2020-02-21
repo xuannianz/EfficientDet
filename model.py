@@ -14,6 +14,8 @@ from tfkeras import EfficientNetB3, EfficientNetB4, EfficientNetB5, EfficientNet
 
 from layers import ClipBoxes, RegressBoxes, FilterDetections, wBiFPNAdd, BatchNormalization
 from initializers import PriorProbability
+from utils.anchors import anchors_for_shape
+import numpy as np
 
 w_bifpns = [64, 88, 112, 160, 224, 288, 384]
 image_sizes = [512, 640, 768, 896, 1024, 1280, 1408]
@@ -246,7 +248,9 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
 
     # apply predicted regression to anchors
 
-    anchors_input = layers.Input((None, 4))
+    # anchors_input = layers.Input((None, 4))
+    anchors = anchors_for_shape((input_size, input_size))
+    anchors_input = np.expand_dims(anchors, axis=0)
     boxes = RegressBoxes(name='boxes')([anchors_input, regression[..., :4]])
     boxes = ClipBoxes(name='clipped_boxes')([image_input, boxes])
 
@@ -263,5 +267,5 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
             score_threshold=score_threshold
         )([boxes, classification])
 
-    prediction_model = models.Model(inputs=[image_input, anchors_input], outputs=detections, name='efficientdet_p')
+    prediction_model = models.Model(inputs=[image_input], outputs=detections, name='efficientdet_p')
     return model, prediction_model
