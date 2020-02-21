@@ -104,7 +104,6 @@ venv.bak/
 .mypy_cache/
 .idea/
 *.h5
-datasets/
 logs/
 checkpoints/
 *.npy
