@@ -131,7 +131,7 @@ def _read_annotations(csv_reader, classes):
                 result[img_file] = []
 
             # If a row contains only an image path, it's an image without annotations.
-            if (x1, y1, x2, y2, class_name) == ('', '', '', '', '', '', '', '', ''):
+            if (x1, y1, x2, y2, class_name) == ('', '', '', '', ''):
                 continue
 
             x1 = _parse(x1, int, 'line {}: malformed x1: {{}}'.format(line))
