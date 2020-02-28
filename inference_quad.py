@@ -30,7 +30,8 @@ model, prediction_model = efficientdet(phi=phi,
                                        num_classes=num_classes,
                                        num_anchors=anchor_parameters.num_anchors(),
                                        score_threshold=score_threshold,
-                                       detect_quadrangle=True
+                                       detect_quadrangle=True,
+                                       anchor_parameters=anchor_parameters,
                                        )
 prediction_model.load_weights(model_path, by_name=True)
 

@@ -218,7 +218,7 @@ def build_class_head(width, depth, num_classes=20, num_anchors=9):
 
 def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freeze_bn=False,
                  score_threshold=0.01,
-                 detect_quadrangle=False):
+                 detect_quadrangle=False, anchor_parameters=None):
     assert phi in range(7)
     input_size = image_sizes[phi]
     input_shape = (input_size, input_size, 3)
@@ -249,7 +249,7 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
     # apply predicted regression to anchors
 
     # anchors_input = layers.Input((None, 4))
-    anchors = anchors_for_shape((input_size, input_size))
+    anchors = anchors_for_shape((input_size, input_size), anchor_params=anchor_parameters)
     anchors_input = np.expand_dims(anchors, axis=0)
     boxes = RegressBoxes(name='boxes')([anchors_input, regression[..., :4]])
     boxes = ClipBoxes(name='clipped_boxes')([image_input, boxes])
