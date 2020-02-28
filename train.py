@@ -70,9 +70,9 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
         A list of callbacks used for training.
     """
     callbacks = []
-    
+
     tensorboard_callback = None
-    
+
     if args.tensorboard_dir:
         tensorboard_callback = keras.callbacks.TensorBoard(
             log_dir=args.tensorboard_dir,
@@ -86,7 +86,7 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
             embeddings_metadata=None
         )
         callbacks.append(tensorboard_callback)
-    
+
     if args.evaluation and validation_generator:
         if args.dataset_type == 'coco':
             from eval.coco import Evaluate
@@ -96,7 +96,7 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
             from eval.pascal import Evaluate
             evaluation = Evaluate(validation_generator, prediction_model, tensorboard=tensorboard_callback)
         callbacks.append(evaluation)
-    
+
     # save the model
     if args.snapshots:
         # ensure directory created first; otherwise h5py will error after epoch.
@@ -113,7 +113,7 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
             # mode='max'
         )
         callbacks.append(checkpoint)
-    
+
     # callbacks.append(keras.callbacks.ReduceLROnPlateau(
     #     monitor='loss',
     #     factor=0.1,
@@ -124,7 +124,7 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
     #     cooldown=0,
     #     min_lr=0
     # ))
-    
+
     return callbacks
 
 
@@ -142,7 +142,7 @@ def create_generators(args):
         'detect_text': args.detect_text,
         'detect_quadrangle': args.detect_quadrangle
     }
-    
+
     # create random transform generator for augmenting training data
     if args.random_transform:
         misc_effect = MiscEffect()
@@ -150,7 +150,7 @@ def create_generators(args):
     else:
         misc_effect = None
         visual_effect = None
-    
+
     if args.dataset_type == 'pascal':
         from generators.pascal import PascalVocGenerator
         train_generator = PascalVocGenerator(
@@ -161,7 +161,7 @@ def create_generators(args):
             visual_effect=visual_effect,
             **common_args
         )
-        
+
         validation_generator = PascalVocGenerator(
             args.pascal_path,
             'val',
@@ -178,7 +178,7 @@ def create_generators(args):
             visual_effect=visual_effect,
             **common_args
         )
-        
+
         if args.val_annotations_path:
             validation_generator = CSVGenerator(
                 args.val_annotations_path,
@@ -199,7 +199,7 @@ def create_generators(args):
             group_method='random',
             **common_args
         )
-        
+
         validation_generator = CocoGenerator(
             args.coco_path,
             'val2017',
@@ -208,7 +208,7 @@ def create_generators(args):
         )
     else:
         raise ValueError('Invalid data type received: {}'.format(args.dataset_type))
-    
+
     return train_generator, validation_generator
 
 
@@ -224,21 +224,21 @@ def check_args(parsed_args):
     Returns
         parsed_args
     """
-    
+
     if parsed_args.num_gpus > 1 and parsed_args.batch_size < parsed_args.num_gpus:
         raise ValueError(
             "Batch size ({}) must be equal to or higher than the number of GPUs ({})".format(parsed_args.batch_size,
                                                                                              parsed_args.multi_gpu))
-    
+
     if parsed_args.num_gpus > 1 and parsed_args.snapshot:
         raise ValueError(
             "Multi GPU training ({}) and resuming from snapshots ({}) is not supported.".format(parsed_args.multi_gpu,
                                                                                                 parsed_args.snapshot))
-    
+
     if parsed_args.num_gpus > 1 and not parsed_args.multi_gpu_force:
         raise ValueError(
             "Multi-GPU support is experimental, use at own risk! Run with --multi-gpu-force if you wish to continue.")
-    
+
     return parsed_args
 
 
@@ -250,13 +250,13 @@ def parse_args(args):
     parser = argparse.ArgumentParser(description='Simple training script for training a RetinaNet network.')
     subparsers = parser.add_subparsers(help='Arguments for specific dataset types.', dest='dataset_type')
     subparsers.required = True
-    
+
     coco_parser = subparsers.add_parser('coco')
     coco_parser.add_argument('coco_path', help='Path to dataset directory (ie. /tmp/COCO).')
-    
+
     pascal_parser = subparsers.add_parser('pascal')
     pascal_parser.add_argument('pascal_path', help='Path to dataset directory (ie. /tmp/VOCdevkit).')
-    
+
     csv_parser = subparsers.add_parser('csv')
     csv_parser.add_argument('annotations_path', help='Path to CSV file containing annotations for training.')
     csv_parser.add_argument('classes_path', help='Path to a CSV file containing class label mapping.')
@@ -264,12 +264,12 @@ def parse_args(args):
                             help='Path to CSV file containing annotations for validation (optional).')
     parser.add_argument('--detect-quadrangle', help='If to detect quadrangle.', action='store_true', default=False)
     parser.add_argument('--detect-text', help='If is text detection task.', action='store_true', default=False)
-    
+
     parser.add_argument('--snapshot', help='Resume training from a snapshot.')
     parser.add_argument('--freeze-backbone', help='Freeze training of backbone layers.', action='store_true')
     parser.add_argument('--freeze-bn', help='Freeze training of BatchNormalization layers.', action='store_true')
     parser.add_argument('--weighted-bifpn', help='Use weighted BiFPN', action='store_true')
-    
+
     parser.add_argument('--batch-size', help='Size of the batches.', default=1, type=int)
     parser.add_argument('--phi', help='Hyper parameter phi', default=0, type=int, choices=(0, 1, 2, 3, 4, 5, 6))
     parser.add_argument('--gpu', help='Id of the GPU to use (as reported by nvidia-smi).')
@@ -277,6 +277,7 @@ def parse_args(args):
     parser.add_argument('--multi-gpu-force', help='Extra flag needed to enable (experimental) multi-gpu support.',
                         action='store_true')
     parser.add_argument('--epochs', help='Number of epochs to train.', type=int, default=50)
+    parser.add_argument('--steps', help='Number of steps per epoch.', type=int, default=10000)
     parser.add_argument('--snapshot-path',
                         help='Path to store snapshots of models during training',
                         default='checkpoints/{}'.format(today))
@@ -288,7 +289,7 @@ def parse_args(args):
     parser.add_argument('--random-transform', help='Randomly transform image and annotations.', action='store_true')
     parser.add_argument('--compute-val-loss', help='Compute validation loss during training', dest='compute_val_loss',
                         action='store_true')
-    
+
     # Fit generator arguments
     parser.add_argument('--multiprocessing', help='Use multiprocessing in fit_generator.', action='store_true')
     parser.add_argument('--workers', help='Number of generator workers.', type=int, default=1)
@@ -303,16 +304,16 @@ def main(args=None):
     if args is None:
         args = sys.argv[1:]
     args = parse_args(args)
-    
+
     # optionally choose specific GPU
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
-    
+
     K.set_session(get_session())
-    
+
     # create the generators
     train_generator, validation_generator = create_generators(args)
-    
+
     num_classes = train_generator.num_classes()
     num_anchors = train_generator.num_anchors
     model, prediction_model = efficientdet(args.phi,
@@ -322,7 +323,7 @@ def main(args=None):
                                            freeze_bn=args.freeze_bn,
                                            detect_quadrangle=args.detect_quadrangle
                                            )
-    
+
     # load pretrained weights
     if args.snapshot:
         if args.snapshot == 'imagenet':
@@ -337,21 +338,21 @@ def main(args=None):
         else:
             print('Loading model, this may take a second...')
             model.load_weights(args.snapshot, by_name=True)
-    
+
     # freeze backbone layers
     if args.freeze_backbone:
         # 227, 329, 329, 374, 464, 566, 656
         for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
             model.layers[i].trainable = False
-    
+
     # compile model
     model.compile(optimizer=Adam(lr=1e-3), loss={
         'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
         'classification': focal()
     }, )
-    
+
     # print(model.summary())
-    
+
     # create the callbacks
     callbacks = create_callbacks(
         model,
@@ -359,14 +360,16 @@ def main(args=None):
         validation_generator,
         args,
     )
-    
+
     if not args.compute_val_loss:
         validation_generator = None
-        
+    elif args.compute_val_loss and validation_generator is None:
+        raise ValueError('When you have no validation data, you should not specify --compute-val-loss.')
+
     # start training
     return model.fit_generator(
         generator=train_generator,
-        steps_per_epoch=len(train_generator),
+        steps_per_epoch=args.steps,
         initial_epoch=0,
         epochs=args.epochs,
         verbose=1,
@@ -374,8 +377,7 @@ def main(args=None):
         workers=args.workers,
         use_multiprocessing=args.multiprocessing,
         max_queue_size=args.max_queue_size,
-        validation_data=validation_generator,
-        validation_steps=len(validation_generator),
+        validation_data=validation_generator
     )
 
 
