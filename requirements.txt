@@ -5,3 +5,4 @@ Pillow==6.2.0
 tensorflow-gpu==1.15.0
 progressbar2
 git+https://github.com/cocodataset/cocoapi.git#subdirectory=PythonAPI
+tqdm==4.28.1
