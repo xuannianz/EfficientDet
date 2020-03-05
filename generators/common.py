@@ -19,7 +19,7 @@ class Generator(keras.utils.Sequence):
             misc_effect=None,
             visual_effect=None,
             batch_size=1,
-            group_method='ratio',  # one of 'none', 'random', 'ratio'
+            group_method='random',  # one of 'none', 'random', 'ratio'
             shuffle_groups=True,
             detect_text=False,
             detect_quadrangle=False,
