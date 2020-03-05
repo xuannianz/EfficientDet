@@ -7,7 +7,8 @@ Thanks for their hard work.
 This project is released under the Apache License. Please take their licenses into consideration too when use this project.
 
 **Updates**
-- [Feb 2020] Support quadrangle detection. For details, please refer to [README_quad](README_quad.md)
+- [03/05/2020] Anchor free version. The accuracy is a little lower, but it's faster and smaller.For details, please refer to [xuannianz/SAPD](https://github.com/xuannianz/SAPD)
+- [02/20/2020] Support quadrangle detection. For details, please refer to [README_quad](README_quad.md)
 
 ## Train
 ### build dataset 

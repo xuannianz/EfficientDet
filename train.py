@@ -228,12 +228,8 @@ def check_args(parsed_args):
     if parsed_args.gpu and parsed_args.batch_size < len(parsed_args.gpu.split(',')):
         raise ValueError(
             "Batch size ({}) must be equal to or higher than the number of GPUs ({})".format(parsed_args.batch_size,
-                                                                                             parsed_args.multi_gpu))
-
-    # if parsed_args.num_gpus > 1 and parsed_args.snapshot:
-    #     raise ValueError(
-    #         "Multi GPU training ({}) and resuming from snapshots ({}) is not supported.".format(parsed_args.multi_gpu,
-    #                                                                                             parsed_args.snapshot))
+                                                                                             len(parsed_args.gpu.split(
+                                                                                                 ','))))
 
     return parsed_args
 
