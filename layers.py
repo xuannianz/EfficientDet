@@ -90,7 +90,7 @@ def bbox_transform_inv(boxes, deltas, mean=None, std=None):
     x2 = boxes[:, :, 2] + (deltas[:, :, 2] * std[2] + mean[2]) * width
     y2 = boxes[:, :, 3] + (deltas[:, :, 3] * std[3] + mean[3]) * height
 
-    pred_boxes = keras.backend.stack([x1, y1, x2, y2], axis=2)
+    pred_boxes = tf.stack([x1, y1, x2, y2], axis=2)
 
     return pred_boxes
 
