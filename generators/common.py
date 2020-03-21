@@ -429,6 +429,7 @@ class Generator(keras.utils.Sequence):
         return inputs, targets
 
     def preprocess_image(self, image):
+        # image, RGB
         image_height, image_width = image.shape[:2]
         if image_height > image_width:
             scale = self.image_size / image_height
@@ -438,21 +439,18 @@ class Generator(keras.utils.Sequence):
             scale = self.image_size / image_width
             resized_height = int(image_height * scale)
             resized_width = self.image_size
+
         image = cv2.resize(image, (resized_width, resized_height))
-        new_image = np.ones((self.image_size, self.image_size, 3), dtype=np.float32) * 128.
-        offset_h = (self.image_size - resized_height) // 2
-        offset_w = (self.image_size - resized_width) // 2
-        new_image[offset_h:offset_h + resized_height, offset_w:offset_w + resized_width] = image.astype(np.float32)
-        new_image /= 255.
+        image = image.astype(np.float32)
+        image /= 255.
         mean = [0.485, 0.456, 0.406]
         std = [0.229, 0.224, 0.225]
-        new_image[..., 0] -= mean[0]
-        new_image[..., 1] -= mean[1]
-        new_image[..., 2] -= mean[2]
-        new_image[..., 0] /= std[0]
-        new_image[..., 1] /= std[1]
-        new_image[..., 2] /= std[2]
-        return new_image, scale, offset_h, offset_w
+        image -= mean
+        image /= std
+        pad_h = self.image_size - resized_height
+        pad_w = self.image_size - resized_width
+        image = np.pad(image, [(0, pad_h), (0, pad_w), (0, 0)], mode='constant')
+        return image, scale
 
     def get_augmented_data(self, group):
         """

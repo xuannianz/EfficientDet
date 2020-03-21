@@ -1,8 +1,6 @@
 # import keras
 from tensorflow import keras
-
 import tensorflow as tf
-import numpy as np
 
 
 class BatchNormalization(keras.layers.BatchNormalization):
@@ -60,46 +58,29 @@ class wBiFPNAdd(keras.layers.Layer):
         return config
 
 
-def bbox_transform_inv(boxes, deltas, mean=None, std=None):
-    """
-    Applies deltas (usually regression results) to boxes (usually anchors).
-
-    Before applying the deltas to the boxes, the normalization that was previously applied (in the generator) has to be removed.
-    The mean and std are the mean and std as applied in the generator. They are unnormalized in this function and then applied to the boxes.
-
-    Args
-        boxes: np.array of shape (B, N, 4), where B is the batch size, N the number of boxes and 4 values for (x1, y1, x2, y2).
-        deltas: np.array of same shape as boxes. These deltas (d_x1, d_y1, d_x2, d_y2) are a factor of the width/height.
-        mean: The mean value used when computing deltas (defaults to [0, 0, 0, 0]).
-        std: The standard deviation used when computing deltas (defaults to [0.2, 0.2, 0.2, 0.2]).
-
-    Returns
-        A np.array of the same shape as boxes, but with deltas applied to each box.
-        The mean and std are used during training to normalize the regression values (networks love normalization).
-    """
-    if mean is None:
-        mean = [0, 0, 0, 0]
-    if std is None:
-        std = [0.2, 0.2, 0.2, 0.2]
-
-    width = boxes[:, :, 2] - boxes[:, :, 0]
-    height = boxes[:, :, 3] - boxes[:, :, 1]
-
-    x1 = boxes[:, :, 0] + (deltas[:, :, 0] * std[0] + mean[0]) * width
-    y1 = boxes[:, :, 1] + (deltas[:, :, 1] * std[1] + mean[1]) * height
-    x2 = boxes[:, :, 2] + (deltas[:, :, 2] * std[2] + mean[2]) * width
-    y2 = boxes[:, :, 3] + (deltas[:, :, 3] * std[3] + mean[3]) * height
-
-    pred_boxes = tf.stack([x1, y1, x2, y2], axis=2)
-
-    return pred_boxes
+def bbox_transform_inv(boxes, deltas, scale_factors=None):
+    cxa = (boxes[..., 0] + boxes[..., 2]) / 2
+    cya = (boxes[..., 1] + boxes[..., 3]) / 2
+    wa = boxes[..., 2] - boxes[..., 0]
+    ha = boxes[..., 3] - boxes[..., 1]
+    ty, tx, th, tw = deltas[..., 0], deltas[..., 1], deltas[..., 2], deltas[..., 3]
+    if scale_factors:
+        ty /= scale_factors[0]
+        tx /= scale_factors[1]
+        th /= scale_factors[2]
+        tw /= scale_factors[3]
+    w = tf.exp(tw) * wa
+    h = tf.exp(th) * ha
+    cy = ty * ha + cya
+    cx = tx * wa + cxa
+    ymin = cy - h / 2.
+    xmin = cx - w / 2.
+    ymax = cy + h / 2.
+    xmax = cx + w / 2.
+    return tf.stack([xmin, ymin, xmax, ymax], axis=-1)
 
 
 class ClipBoxes(keras.layers.Layer):
-    """
-    Keras layer to clip box values to lie inside a given shape.
-    """
-
     def call(self, inputs, **kwargs):
         image, boxes = inputs
         shape = keras.backend.cast(keras.backend.shape(image), keras.backend.floatx())
@@ -117,51 +98,18 @@ class ClipBoxes(keras.layers.Layer):
 
 
 class RegressBoxes(keras.layers.Layer):
-    """
-    Keras layer for applying regression values to boxes.
-    """
-
-    def __init__(self, mean=None, std=None, *args, **kwargs):
-        """
-        Initializer for the RegressBoxes layer.
-
-        Args
-            mean: The mean value of the regression values which was used for normalization.
-            std: The standard value of the regression values which was used for normalization.
-        """
-        if mean is None:
-            mean = np.array([0, 0, 0, 0], dtype='float32')
-        if std is None:
-            std = np.array([0.2, 0.2, 0.2, 0.2], dtype='float32')
-
-        if isinstance(mean, (list, tuple)):
-            mean = np.array(mean)
-        elif not isinstance(mean, np.ndarray):
-            raise ValueError('Expected mean to be a np.ndarray, list or tuple. Received: {}'.format(type(mean)))
-
-        if isinstance(std, (list, tuple)):
-            std = np.array(std)
-        elif not isinstance(std, np.ndarray):
-            raise ValueError('Expected std to be a np.ndarray, list or tuple. Received: {}'.format(type(std)))
-
-        self.mean = mean
-        self.std = std
+    def __init__(self, *args, **kwargs):
         super(RegressBoxes, self).__init__(*args, **kwargs)
 
     def call(self, inputs, **kwargs):
         anchors, regression = inputs
-        return bbox_transform_inv(anchors, regression, mean=self.mean, std=self.std)
+        return bbox_transform_inv(anchors, regression)
 
     def compute_output_shape(self, input_shape):
         return input_shape[0]
 
     def get_config(self):
         config = super(RegressBoxes, self).get_config()
-        config.update({
-            'mean': self.mean.tolist(),
-            'std': self.std.tolist(),
-        })
-
         return config
 
 
@@ -173,7 +121,7 @@ def filter_detections(
         class_specific_filter=True,
         nms=True,
         score_threshold=0.01,
-        max_detections=300,
+        max_detections=100,
         nms_threshold=0.5,
         detect_quadrangle=False,
 ):
@@ -224,6 +172,8 @@ def filter_detections(
             filtered_scores = keras.backend.gather(scores_, indices_)[:, 0]
 
             # perform NMS
+            # filtered_boxes = tf.concat([filtered_boxes[..., 1:2], filtered_boxes[..., 0:1],
+            #                             filtered_boxes[..., 3:4], filtered_boxes[..., 2:3]], axis=-1)
             nms_indices = tf.image.non_max_suppression(filtered_boxes, filtered_scores, max_output_size=max_detections,
                                                        iou_threshold=nms_threshold)
 
@@ -300,7 +250,7 @@ class FilterDetections(keras.layers.Layer):
             class_specific_filter=True,
             nms_threshold=0.5,
             score_threshold=0.01,
-            max_detections=300,
+            max_detections=100,
             parallel_iterations=32,
             detect_quadrangle=False,
             **kwargs

@@ -85,6 +85,7 @@ def init_tfkeras_custom_objects():
 
 
 def preprocess_image(image, image_size):
+    # image, RGB
     image_height, image_width = image.shape[:2]
     if image_height > image_width:
         scale = image_size / image_height
@@ -94,22 +95,19 @@ def preprocess_image(image, image_size):
         scale = image_size / image_width
         resized_height = int(image_height * scale)
         resized_width = image_size
-    
+
     image = cv2.resize(image, (resized_width, resized_height))
-    new_image = np.ones((image_size, image_size, 3), dtype=np.float32) * 128.
-    offset_h = (image_size - resized_height) // 2
-    offset_w = (image_size - resized_width) // 2
-    new_image[offset_h:offset_h + resized_height, offset_w:offset_w + resized_width] = image.astype(np.float32)
-    new_image /= 255.
-    
+    image = image.astype(np.float32)
+    image /= 255.
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
-    
-    for i in range(3):
-        new_image[..., i] -= mean[i]
-        new_image[..., i] /= std[i]
-    
-    return new_image, scale, offset_h, offset_w
+    image -= mean
+    image /= std
+    pad_h = image_size - resized_height
+    pad_w = image_size - resized_width
+    image = np.pad(image, [(0, pad_h), (0, pad_w), (0, 0)], mode='constant')
+
+    return image, scale
 
 
 def rotate_image(image):
@@ -173,3 +171,12 @@ def reorder_vertexes(vertexes):
     ordered_vertexes[2, 1] = ymax
     ordered_vertexes[3, 0] = xmin
     return ordered_vertexes
+
+
+def postprocess_boxes(boxes, scale, height, width):
+    boxes /= scale
+    boxes[:, 0] = np.clip(boxes[:, 0], 0, width - 1)
+    boxes[:, 1] = np.clip(boxes[:, 1], 0, height - 1)
+    boxes[:, 2] = np.clip(boxes[:, 2], 0, width - 1)
+    boxes[:, 3] = np.clip(boxes[:, 3], 0, height - 1)
+    return boxes

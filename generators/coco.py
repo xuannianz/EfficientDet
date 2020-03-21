@@ -37,7 +37,10 @@ class CocoGenerator(Generator):
         """
         self.data_dir = data_dir
         self.set_name = set_name
-        self.coco = COCO(os.path.join(data_dir, 'annotations', 'instances_' + set_name + '.json'))
+        if set_name in ['train2017', 'val2017']:
+            self.coco = COCO(os.path.join(data_dir, 'annotations', 'instances_' + set_name + '.json'))
+        else:
+            self.coco = COCO(os.path.join(data_dir, 'annotations', 'image_info_' + set_name + '.json'))
         self.image_ids = self.coco.getImgIds()
 
         self.load_classes()
@@ -73,7 +76,7 @@ class CocoGenerator(Generator):
     def num_classes(self):
         """ Number of classes in the dataset. For COCO this is 80.
         """
-        return len(self.classes)
+        return 90
 
     def has_label(self, label):
         """ Return True if label is a known label.

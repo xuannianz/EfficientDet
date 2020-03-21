@@ -1,5 +1,5 @@
-import numpy as np
 # import keras
+import numpy as np
 from tensorflow import keras
 
 from utils.compute_overlap import compute_overlap
@@ -18,7 +18,7 @@ class AnchorParameters:
 
     def __init__(self, sizes=(32, 64, 128, 256, 512),
                  strides=(8, 16, 32, 64, 128),
-                 ratios=(0.5, 1, 2),
+                 ratios=(1, 0.5, 2),
                  scales=(2 ** 0, 2 ** (1. / 3.), 2 ** (2. / 3.))):
         self.sizes = sizes
         self.strides = strides
@@ -36,7 +36,7 @@ AnchorParameters.default = AnchorParameters(
     sizes=[32, 64, 128, 256, 512],
     strides=[8, 16, 32, 64, 128],
     # ratio=h/w
-    ratios=np.array([0.5, 1, 2], keras.backend.floatx()),
+    ratios=np.array([1, 0.5, 2], keras.backend.floatx()),
     scales=np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)], keras.backend.floatx()),
 )
 
@@ -96,9 +96,6 @@ def anchor_targets_bbox(
                                                                                             annotations['bboxes'],
                                                                                             negative_overlap,
                                                                                             positive_overlap)
-            # print(f'num_positive={np.sum(positive_indices)}')
-            # print(f'num_anchors={anchors.shape[0]}')
-            # print(f'num_gts={annotations["bboxes"].shape[0]}')
             labels_batch[index, ignore_indices, -1] = -1
             labels_batch[index, positive_indices, -1] = 1
 
@@ -285,10 +282,6 @@ def shift(feature_map_shape, stride, anchors):
         shift_x.ravel(), shift_y.ravel()
     )).transpose()
 
-    # add A anchors (1, A, 4) to
-    # cell K shifts (K, 1, 4) to get
-    # shift anchors (K, A, 4)
-    # reshape to (K*A, 4) shifted anchors
     A = anchors.shape[0]
     K = shifts.shape[0]
     all_anchors = (anchors.reshape((1, A, 4)) + shifts.reshape((1, K, 4)).transpose((1, 0, 2)))
@@ -320,65 +313,43 @@ def generate_anchors(base_size=16, ratios=None, scales=None):
     # initialize output anchors
     anchors = np.zeros((num_anchors, 4))
 
-    # scale base_size
-    anchors[:, 2:] = base_size * np.tile(scales, (2, len(ratios))).T
+    anchors[:, 2:] = base_size * np.tile(np.repeat(scales, len(ratios))[None], (2, 1)).T
 
-    # compute areas of anchors
-    # (num_anchors, )
     areas = anchors[:, 2] * anchors[:, 3]
 
     # correct for ratios
-    # (num_anchors, )
-    anchors[:, 2] = np.sqrt(areas / np.repeat(ratios, len(scales)))
-    anchors[:, 3] = anchors[:, 2] * np.repeat(ratios, len(scales))
+    anchors[:, 2] = np.sqrt(areas / np.tile(ratios, len(scales)))
+    anchors[:, 3] = anchors[:, 2] * np.tile(ratios, len(scales))
 
-    # transform from (cx, cy, w, h) -> (x1, y1, x2, y2)
     anchors[:, 0::2] -= np.tile(anchors[:, 2] * 0.5, (2, 1)).T
     anchors[:, 1::2] -= np.tile(anchors[:, 3] * 0.5, (2, 1)).T
 
     return anchors
 
 
-def bbox_transform(anchors, gt_boxes, mean=None, std=None):
-    """
+def bbox_transform(anchors, gt_boxes, scale_factors=None):
+    wa = anchors[:, 2] - anchors[:, 0]
+    ha = anchors[:, 3] - anchors[:, 1]
+    cxa = anchors[:, 0] + wa / 2.
+    cya = anchors[:, 1] + ha / 2.
 
-    Args:
-        anchors: (N, 4)
-        gt_boxes: (N, 4)
-        mean:
-        std:
-
-    Returns:
-
-    """
-
-    if mean is None:
-        mean = np.array([0, 0, 0, 0])
-    if std is None:
-        std = np.array([0.2, 0.2, 0.2, 0.2])
-
-    if isinstance(mean, (list, tuple)):
-        mean = np.array(mean)
-    elif not isinstance(mean, np.ndarray):
-        raise ValueError('Expected mean to be a np.ndarray, list or tuple. Received: {}'.format(type(mean)))
-
-    if isinstance(std, (list, tuple)):
-        std = np.array(std)
-    elif not isinstance(std, np.ndarray):
-        raise ValueError('Expected std to be a np.ndarray, list or tuple. Received: {}'.format(type(std)))
-
-    anchor_widths = anchors[:, 2] - anchors[:, 0]
-    anchor_heights = anchors[:, 3] - anchors[:, 1]
-
-    targets_dx1 = (gt_boxes[:, 0] - anchors[:, 0]) / anchor_widths
-    targets_dy1 = (gt_boxes[:, 1] - anchors[:, 1]) / anchor_heights
-    targets_dx2 = (gt_boxes[:, 2] - anchors[:, 2]) / anchor_widths
-    targets_dy2 = (gt_boxes[:, 3] - anchors[:, 3]) / anchor_heights
-    # (4, N)
-    targets = np.stack((targets_dx1, targets_dy1, targets_dx2, targets_dy2))
-    # (N, 4)
-    targets = targets.T
-
-    targets = (targets - mean) / std
-
+    w = gt_boxes[:, 2] - gt_boxes[:, 0]
+    h = gt_boxes[:, 3] - gt_boxes[:, 1]
+    cx = gt_boxes[:, 0] + wa / 2.
+    cy = gt_boxes[:, 1] + ha / 2.
+    # Avoid NaN in division and log below.
+    ha += 1e-7
+    wa += 1e-7
+    h += 1e-7
+    w += 1e-7
+    tx = (cx - cxa) / wa
+    ty = (cy - cya) / ha
+    tw = np.log(w / wa)
+    th = np.log(h / ha)
+    if scale_factors:
+        ty *= scale_factors[0]
+        tx *= scale_factors[1]
+        th *= scale_factors[2]
+        tw *= scale_factors[3]
+    targets = np.stack([ty, tx, th, tw])
     return targets
