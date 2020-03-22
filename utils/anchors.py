@@ -119,7 +119,7 @@ def anchor_targets_bbox(
             labels_batch[index, indices, -1] = -1
             regression_batch[index, indices, -1] = -1
 
-    return regression_batch, labels_batch
+    return labels_batch, regression_batch
 
 
 def compute_gt_annotations(
@@ -351,5 +351,5 @@ def bbox_transform(anchors, gt_boxes, scale_factors=None):
         tx *= scale_factors[1]
         th *= scale_factors[2]
         tw *= scale_factors[3]
-    targets = np.stack([ty, tx, th, tw])
+    targets = np.stack([ty, tx, th, tw], axis=1)
     return targets

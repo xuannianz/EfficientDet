@@ -281,16 +281,12 @@ class Generator(keras.utils.Sequence):
         """
 
         # preprocess the image
-        image, scale, offset_h, offset_w = self.preprocess_image(image)
+        image, scale = self.preprocess_image(image)
 
         # apply resizing to annotations too
         annotations['bboxes'] *= scale
-        annotations['bboxes'][:, [0, 2]] += offset_w
-        annotations['bboxes'][:, [1, 3]] += offset_h
         if self.detect_quadrangle:
             annotations['quadrangles'] *= scale
-            annotations['quadrangles'][:, :, 0] += offset_w
-            annotations['quadrangles'][:, :, 1] += offset_h
         return image, annotations
 
     def preprocess_group(self, image_group, annotations_group):

@@ -304,7 +304,7 @@ def main(args=None):
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    K.set_session(get_session())
+    # K.set_session(get_session())
 
     model, prediction_model = efficientdet(args.phi,
                                            num_classes=num_classes,
