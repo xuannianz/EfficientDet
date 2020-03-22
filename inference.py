@@ -5,7 +5,7 @@ import os
 import time
 import glob
 
-from model_bak_with_convert import efficientdet
+from model import efficientdet
 from utils import preprocess_image, postprocess_boxes
 from utils.draw_boxes import draw_boxes
 
@@ -29,7 +29,7 @@ def main():
                             score_threshold=score_threshold)
     model.load_weights(model_path, by_name=True)
 
-    for image_path in glob.glob('/home/adam/github/others/tf/models/research/object_detection/test_images/image2.jpg'):
+    for image_path in glob.glob('datasets/VOC2007/JPEGImages/*.jpg'):
         image = cv2.imread(image_path)
         src_image = image.copy()
         # BGR -> RGB

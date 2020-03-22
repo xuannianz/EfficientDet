@@ -83,13 +83,10 @@ def _get_detections(generator, model, score_threshold=0.05, max_detections=100, 
         h, w = image.shape[:2]
 
         anchors = generator.anchors
-        image, scale, offset_h, offset_w = generator.preprocess_image(image)
+        image, scale = generator.preprocess_image(image)
 
         # run network
-        boxes, scores, *_, labels = model.predict_on_batch([np.expand_dims(image, axis=0),
-                                                            np.expand_dims(anchors, axis=0)])
-        boxes[..., [0, 2]] = boxes[..., [0, 2]] - offset_w
-        boxes[..., [1, 3]] = boxes[..., [1, 3]] - offset_h
+        boxes, scores, *_, labels = model.predict_on_batch([np.expand_dims(image, axis=0)])
         boxes /= scale
         boxes[:, :, 0] = np.clip(boxes[:, :, 0], 0, w - 1)
         boxes[:, :, 1] = np.clip(boxes[:, :, 1], 0, h - 1)

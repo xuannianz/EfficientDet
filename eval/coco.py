@@ -145,14 +145,19 @@ class Evaluate(keras.callbacks.Callback):
                     'AR @[ IoU=0.50:0.95 | area=medium | maxDets=100 ]',
                     'AR @[ IoU=0.50:0.95 | area= large | maxDets=100 ]']
         coco_eval_stats = evaluate(self.generator, self.active_model, self.threshold)
-        if coco_eval_stats is not None and self.tensorboard is not None and self.tensorboard.writer is not None:
-            summary = tf.Summary()
-            for index, result in enumerate(coco_eval_stats):
-                summary_value = summary.value.add()
-                summary_value.simple_value = result
-                summary_value.tag = '{}. {}'.format(index + 1, coco_tag[index])
-                self.tensorboard.writer.add_summary(summary, epoch)
-                logs[coco_tag[index]] = result
+        if coco_eval_stats is not None and self.tensorboard is not None:
+            if tf.version.VERSION < '2.0.0' and self.tensorboard.writer is not None:
+                summary = tf.Summary()
+                for index, result in enumerate(coco_eval_stats):
+                    summary_value = summary.value.add()
+                    summary_value.simple_value = result
+                    summary_value.tag = '{}. {}'.format(index + 1, coco_tag[index])
+                    self.tensorboard.writer.add_summary(summary, epoch)
+                    logs[coco_tag[index]] = result
+            else:
+                for index, result in enumerate(coco_eval_stats):
+                    tag = '{}. {}'.format(index + 1, coco_tag[index])
+                    tf.summary.scalar(tag, result, epoch)
 
 
 if __name__ == '__main__':
@@ -162,20 +167,20 @@ if __name__ == '__main__':
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-    phi = 1
+    phi = 2
     weighted_bifpn = True
+    model_path = 'efficientdet-d2.h5'
     common_args = {
         'batch_size': 1,
         'phi': phi,
     }
 
     test_generator = CocoGenerator(
-        'datasets/coco/2017_118_5/',
+        'datasets/coco',
         'test-dev2017',
         shuffle_groups=False,
         **common_args
     )
-    model_path = 'd1.h5'
     num_classes = test_generator.num_classes()
     model, prediction_model = efficientdet(phi=phi, num_classes=num_classes, weighted_bifpn=weighted_bifpn,
                                            score_threshold=0.01)

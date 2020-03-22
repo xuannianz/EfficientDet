@@ -74,6 +74,9 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
     tensorboard_callback = None
 
     if args.tensorboard_dir:
+        if tf.version.VERSION > '2.0.0':
+            file_writer = tf.summary.create_file_writer(args.tensorboard_dir)
+            file_writer.set_as_default()
         tensorboard_callback = keras.callbacks.TensorBoard(
             log_dir=args.tensorboard_dir,
             histogram_freq=0,
@@ -108,6 +111,7 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
                 else f'{args.dataset_type}_{{epoch:02d}}_{{loss:.4f}}.h5'
             ),
             verbose=1,
+            save_weights_only=True,
             # save_best_only=True,
             # monitor="mAP",
             # mode='max'
