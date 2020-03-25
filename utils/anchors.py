@@ -335,8 +335,8 @@ def bbox_transform(anchors, gt_boxes, scale_factors=None):
 
     w = gt_boxes[:, 2] - gt_boxes[:, 0]
     h = gt_boxes[:, 3] - gt_boxes[:, 1]
-    cx = gt_boxes[:, 0] + wa / 2.
-    cy = gt_boxes[:, 1] + ha / 2.
+    cx = gt_boxes[:, 0] + w / 2.
+    cy = gt_boxes[:, 1] + h / 2.
     # Avoid NaN in division and log below.
     ha += 1e-7
     wa += 1e-7
@@ -347,9 +347,9 @@ def bbox_transform(anchors, gt_boxes, scale_factors=None):
     tw = np.log(w / wa)
     th = np.log(h / ha)
     if scale_factors:
-        ty *= scale_factors[0]
-        tx *= scale_factors[1]
-        th *= scale_factors[2]
-        tw *= scale_factors[3]
+        ty /= scale_factors[0]
+        tx /= scale_factors[1]
+        th /= scale_factors[2]
+        tw /= scale_factors[3]
     targets = np.stack([ty, tx, th, tw], axis=1)
     return targets
