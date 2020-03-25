@@ -65,10 +65,10 @@ def bbox_transform_inv(boxes, deltas, scale_factors=None):
     ha = boxes[..., 3] - boxes[..., 1]
     ty, tx, th, tw = deltas[..., 0], deltas[..., 1], deltas[..., 2], deltas[..., 3]
     if scale_factors:
-        ty /= scale_factors[0]
-        tx /= scale_factors[1]
-        th /= scale_factors[2]
-        tw /= scale_factors[3]
+        ty *= scale_factors[0]
+        tx *= scale_factors[1]
+        th *= scale_factors[2]
+        tw *= scale_factors[3]
     w = tf.exp(tw) * wa
     h = tf.exp(th) * ha
     cy = ty * ha + cya
