@@ -150,7 +150,7 @@ class CocoGenerator(Generator):
                 continue
 
             annotations['labels'] = np.concatenate(
-                [annotations['labels'], [self.coco_label_to_label(a['category_id'])]], axis=0)
+                [annotations['labels'], [a['category_id'] - 1]], axis=0)
             annotations['bboxes'] = np.concatenate([annotations['bboxes'], [[
                 a['bbox'][0],
                 a['bbox'][1],
