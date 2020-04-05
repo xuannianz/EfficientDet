@@ -11,7 +11,7 @@ def rotate(image, annotations, prob=0.5, border_value=(128, 128, 128)):
     if random_prob < (1 - prob):
         return image, annotations
 
-    rotate_degree = np.random.uniform(low=-45, high=45)
+    rotate_degree = np.random.uniform(low=-10, high=10)
     h, w = image.shape[:2]
     # Compute the rotation matrix.
     M = cv2.getRotationMatrix2D(center=(w / 2, h / 2),
@@ -220,8 +220,8 @@ class MiscEffect:
         self.border_value = border_value
 
     def __call__(self, image, annotations):
-        # image, annotations = multi_scale(image, annotations, prob=self.multi_scale_prob)
-        # image, annotations = rotate(image, annotations, prob=self.rotate_prob, border_value=self.border_value)
+        image, annotations = multi_scale(image, annotations, prob=self.multi_scale_prob)
+        image, annotations = rotate(image, annotations, prob=self.rotate_prob, border_value=self.border_value)
         image, annotations = flipx(image, annotations, prob=self.flip_prob)
         image, annotations = crop(image, annotations, prob=self.crop_prob)
         image, annotations = translate(image, annotations, prob=self.translate_prob, border_value=self.border_value)

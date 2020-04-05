@@ -303,12 +303,14 @@ def build_BiFPN(features, num_channels, id, freeze_bn=False):
 
 
 class BoxNet(models.Model):
-    def __init__(self, width, depth, num_anchors=9, separable_conv=True, freeze_bn=False, **kwargs):
+    def __init__(self, width, depth, num_anchors=9, separable_conv=True, freeze_bn=False, detect_quadrangle=False, **kwargs):
         super(BoxNet, self).__init__(**kwargs)
         self.width = width
         self.depth = depth
         self.num_anchors = num_anchors
         self.separable_conv = separable_conv
+        self.detect_quadrangle = detect_quadrangle
+        num_values = 9 if detect_quadrangle else 4
         options = {
             'kernel_size': 3,
             'strides': 1,
@@ -323,14 +325,15 @@ class BoxNet(models.Model):
             options.update(kernel_initializer)
             self.convs = [layers.SeparableConv2D(filters=width, name=f'{self.name}/box-{i}', **options) for i in
                           range(depth)]
-            self.head = layers.SeparableConv2D(filters=num_anchors * 4, name=f'{self.name}/box-predict', **options)
+            self.head = layers.SeparableConv2D(filters=num_anchors * num_values,
+                                               name=f'{self.name}/box-predict', **options)
         else:
             kernel_initializer = {
                 'kernel_initializer': initializers.RandomNormal(mean=0.0, stddev=0.01, seed=None)
             }
             options.update(kernel_initializer)
             self.convs = [layers.Conv2D(filters=width, name=f'{self.name}/box-{i}', **options) for i in range(depth)]
-            self.head = layers.Conv2D(filters=num_anchors * 4, name=f'{self.name}/box-predict', **options)
+            self.head = layers.Conv2D(filters=num_anchors * num_values, name=f'{self.name}/box-predict', **options)
         self.bns = [
             [layers.BatchNormalization(momentum=MOMENTUM, epsilon=EPSILON, name=f'{self.name}/box-{i}-bn-{j}') for j in
              range(3, 8)]
@@ -338,7 +341,7 @@ class BoxNet(models.Model):
         # self.bns = [[BatchNormalization(freeze=freeze_bn, name=f'{self.name}/box-{i}-bn-{j}') for j in range(3, 8)]
         #             for i in range(depth)]
         self.relu = layers.Lambda(lambda x: tf.nn.swish(x))
-        self.reshape = layers.Reshape((-1, 4))
+        self.reshape = layers.Reshape((-1, num_values))
         self.level = 0
 
     def call(self, inputs, **kwargs):
@@ -434,7 +437,7 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
         for i in range(d_bifpn):
             fpn_features = build_BiFPN(fpn_features, w_bifpn, i, freeze_bn=freeze_bn)
     box_net = BoxNet(w_head, d_head, num_anchors=num_anchors, separable_conv=separable_conv, freeze_bn=freeze_bn,
-                     name='box_net')
+                     detect_quadrangle=detect_quadrangle, name='box_net')
     class_net = ClassNet(w_head, d_head, num_classes=num_classes, num_anchors=num_anchors,
                          separable_conv=separable_conv, freeze_bn=freeze_bn, name='class_net')
     classification = [class_net([feature, i]) for i, feature in enumerate(fpn_features)]
@@ -465,3 +468,7 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
 
     prediction_model = models.Model(inputs=[image_input], outputs=detections, name='efficientdet_p')
     return model, prediction_model
+
+
+if __name__ == '__main__':
+    x, y = efficientdet(1)
