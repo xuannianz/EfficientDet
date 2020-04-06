@@ -308,7 +308,7 @@ def main(args=None):
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    K.set_session(get_session())
+    # K.set_session(get_session())
 
     # create the generators
     train_generator, validation_generator = create_generators(args)
@@ -366,7 +366,7 @@ def main(args=None):
     # start training
     return model.fit_generator(
         generator=train_generator,
-        steps_per_epoch=args.steps,
+        # steps_per_epoch=args.steps,
         initial_epoch=0,
         epochs=args.epochs,
         verbose=1,
