@@ -219,7 +219,7 @@ def evaluate(
                     false_positives = np.append(false_positives, 1)
                     true_positives = np.append(true_positives, 0)
                     continue
-                overlaps = compute_overlap(np.expand_dims(d, axis=0), annotations)
+                overlaps = compute_overlap(np.expand_dims(d, axis=0).astype(np.float32), annotations.astype(np.float32))
                 assigned_annotation = np.argmax(overlaps, axis=1)
                 max_overlap = overlaps[0, assigned_annotation]
 
