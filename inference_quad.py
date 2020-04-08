@@ -50,6 +50,17 @@ for image_path in glob.glob('datasets/ic15/test_images/*.jpg'):
     start = time.time()
     boxes, scores, alphas, ratios, labels = prediction_model.predict_on_batch([np.expand_dims(image, axis=0),
                                                                                np.expand_dims(anchors, axis=0)])
+    print(time.time() - start)
+    
+    # select indices which have a score above the threshold
+    indices = np.where(scores[0, :] > score_threshold)[0]
+
+    # select those detections
+    boxes = boxes[0, indices]
+    scores = scores[0, indices]
+    labels = labels[0, indices]
+    ratios = ratios[0, indices]
+    
     # alphas = np.exp(alphas)
     alphas = 1 / (1 + np.exp(-alphas))
     ratios = 1 / (1 + np.exp(-ratios))
@@ -62,7 +73,6 @@ for image_path in glob.glob('datasets/ic15/test_images/*.jpg'):
     quadrangles[:, :, 5] = boxes[:, :, 3]
     quadrangles[:, :, 6] = boxes[:, :, 0]
     quadrangles[:, :, 7] = boxes[:, :, 3] - (boxes[:, :, 3] - boxes[:, :, 1]) * alphas[:, :, 3]
-    print(time.time() - start)
 
     boxes[0, :, [0, 2]] = boxes[0, :, [0, 2]] - offset_w
     boxes[0, :, [1, 3]] = boxes[0, :, [1, 3]] - offset_h
@@ -77,16 +87,6 @@ for image_path in glob.glob('datasets/ic15/test_images/*.jpg'):
     quadrangles /= scale
     quadrangles[0, :, [0, 2, 4, 6]] = np.clip(quadrangles[0, :, [0, 2, 4, 6]], 0, w - 1)
     quadrangles[0, :, [1, 3, 5, 7]] = np.clip(quadrangles[0, :, [1, 3, 5, 7]], 0, h - 1)
-
-    # select indices which have a score above the threshold
-    indices = np.where(scores[0, :] > score_threshold)[0]
-
-    # select those detections
-    boxes = boxes[0, indices]
-    scores = scores[0, indices]
-    labels = labels[0, indices]
-    quadrangles = quadrangles[0, indices]
-    ratios = ratios[0, indices]
 
     for bbox, score, label, quadrangle, ratio in zip(boxes, scores, labels, quadrangles, ratios):
         xmin = int(round(bbox[0]))
