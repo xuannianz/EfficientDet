@@ -196,7 +196,7 @@ class CSVGenerator(Generator):
 
         # Take base_dir from annotations file if not explicitly specified.
         if self.base_dir is None:
-            if osp.exists(csv_data_file):
+            if not osp.exists(csv_data_file):
                 self.base_dir = ''
             else:
                 self.base_dir = osp.dirname(csv_data_file)
