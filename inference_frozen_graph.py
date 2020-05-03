@@ -66,7 +66,7 @@ def main():
 
     boxes, scores, labels = np.squeeze(boxes), np.squeeze(scores), np.squeeze(labels)
     print(time.time() - start)
-    boxes = post_process_boxes(boxes=boxes,
+    boxes = postprocess_boxes(boxes=boxes,
                                scale=scale,
                                offset_h=offset_h,
                                offset_w=offset_w,
