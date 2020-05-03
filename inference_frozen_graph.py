@@ -68,8 +68,6 @@ def main():
     print(time.time() - start)
     boxes = postprocess_boxes(boxes=boxes,
                                scale=scale,
-                               offset_h=offset_h,
-                               offset_w=offset_w,
                                height=h,
                                width=w)
 
