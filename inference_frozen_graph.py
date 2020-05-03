@@ -8,7 +8,7 @@ from tensorflow.python.platform import gfile
 
 from utils.anchors import anchors_for_shape
 from utils.draw_boxes import draw_boxes
-from utils.post_process_boxes import post_process_boxes
+from utils import postprocess_boxes
 
 
 def get_frozen_graph(graph_file):
