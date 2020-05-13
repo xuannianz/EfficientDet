@@ -25,6 +25,7 @@ image_sizes = [512, 640, 768, 896, 1024, 1280, 1408]
 backbones = [EfficientNetB0, EfficientNetB1, EfficientNetB2,
              EfficientNetB3, EfficientNetB4, EfficientNetB5, EfficientNetB6]
 
+
 MOMENTUM = 0.997
 EPSILON = 1e-4
 
@@ -417,7 +418,8 @@ class ClassNet(models.Model):
 
 
 def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freeze_bn=False,
-                 score_threshold=0.01, detect_quadrangle=False, anchor_parameters=None, separable_conv=True):
+                 score_threshold=0.01, detect_quadrangle=False, anchor_parameters=None, separable_conv=True,
+                 finetuned=False, finetuned_num_classes=90):
     assert phi in range(7)
     input_size = image_sizes[phi]
     input_shape = (input_size, input_size, 3)
@@ -438,10 +440,10 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
             fpn_features = build_BiFPN(fpn_features, w_bifpn, i, freeze_bn=freeze_bn)
     box_net = BoxNet(w_head, d_head, num_anchors=num_anchors, separable_conv=separable_conv, freeze_bn=freeze_bn,
                      detect_quadrangle=detect_quadrangle, name='box_net')
-    class_net = ClassNet(w_head, d_head, num_classes=num_classes, num_anchors=num_anchors,
+    class_net = ClassNet(w_head, d_head, num_classes=finetuned_num_classes if finetuned else num_classes, num_anchors=num_anchors,
                          separable_conv=separable_conv, freeze_bn=freeze_bn, name='class_net')
     classification = [class_net([feature, i]) for i, feature in enumerate(fpn_features)]
-    classification = layers.Concatenate(axis=1, name='classification')(classification)
+    classification = layers.Concatenate(axis=1, name='ft_classification' if finetuned else 'classification' )(classification)
     regression = [box_net([feature, i]) for i, feature in enumerate(fpn_features)]
     regression = layers.Concatenate(axis=1, name='regression')(regression)
 
