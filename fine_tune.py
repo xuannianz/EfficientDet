@@ -27,7 +27,6 @@ def main():
                             weighted_bifpn=weighted_bifpn,
                             num_classes=num_classes,
                             score_threshold=score_threshold,
-                            finetuned=True,
                             finetuned_num_classes=2)
 
     model.load_weights(model_path, by_name=True)
