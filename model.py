@@ -441,7 +441,7 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
     box_net = BoxNet(w_head, d_head, num_anchors=num_anchors, separable_conv=separable_conv, freeze_bn=freeze_bn,
                      detect_quadrangle=detect_quadrangle, name='box_net')
     class_net = ClassNet(w_head, d_head, num_classes=finetuned_num_classes if finetuned_num_classes else num_classes, num_anchors=num_anchors,
-                         separable_conv=separable_conv, freeze_bn=freeze_bn, name='class_net')
+                         separable_conv=separable_conv, freeze_bn=freeze_bn, name='ft_class_net' if finetuned_num_classes else'class_net')
     classification = [class_net([feature, i]) for i, feature in enumerate(fpn_features)]
     classification = layers.Concatenate(axis=1, name='ft_classification' if finetuned_num_classes else 'classification' )(classification)
     regression = [box_net([feature, i]) for i, feature in enumerate(fpn_features)]
