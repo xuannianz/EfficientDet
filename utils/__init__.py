@@ -16,7 +16,7 @@
 import functools
 import cv2
 import numpy as np
-
+import cupy as cp
 _KERAS_BACKEND = None
 _KERAS_LAYERS = None
 _KERAS_MODELS = None
@@ -103,12 +103,38 @@ def preprocess_image(image, image_size):
     std = [0.229, 0.224, 0.225]
     image -= mean
     image /= std
-    pad_h = image_size - resized_height
-    pad_w = image_size - resized_width
-    image = np.pad(image, [(0, pad_h), (0, pad_w), (0, 0)], mode='constant')
+    newimg = np.zeros((image_size,image_size,3),dtype=np.float32)
+    newimg[:image.shape[0],:image.shape[1]:,:] = image
+    
+    return newimg, scale
 
-    return image, scale
+def preprocess_image_gpu(image, image_size):
+    # image, RGB
+    image_height, image_width = image.shape[:2]
+    if image_height > image_width:
+        scale = image_size / image_height
+        resized_height = image_size
+        resized_width = int(image_width * scale)
+    else:
+        scale = image_size / image_width
+        resized_height = int(image_height * scale)
+        resized_width = image_size
 
+    image = cv2.resize(image, (resized_width, resized_height))
+    
+    image = cp.array(image) #Numpy to Cupy
+    image = image.astype(np.float32)
+    image /= 255.
+    mean = cp.array([0.485, 0.456, 0.406])
+    std = cp.array([0.229, 0.224, 0.225])
+    image -= mean
+    image /= std
+
+    newimg = cp.zeros((image_size,image_size,3),dtype=cp.float32)
+    newimg[:image.shape[0],:image.shape[1]:,:] = image
+    newimg = cp.asnumpy(newimg) #Cupy to Numpy
+    
+    return newimg, scale
 
 def rotate_image(image):
     rotate_degree = np.random.uniform(low=-45, high=45)
