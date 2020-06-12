@@ -43,7 +43,7 @@ for image_path in glob.glob('datasets/ic15/test_images/*.jpg'):
     image = image[:, :, ::-1]
     h, w = image.shape[:2]
 
-    image, scale, offset_h, offset_w = preprocess_image(image, image_size=image_size)
+    image, scale = preprocess_image(image, image_size=image_size)
     inputs = np.expand_dims(image, axis=0)
     anchors = anchors_for_shape((image_size, image_size), anchor_params=anchor_parameters)
     # run network
