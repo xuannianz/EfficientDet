@@ -54,7 +54,7 @@ def main():
     image = image[:, :, ::-1]
     h, w = image.shape[:2]
     
-    image, scale, offset_h, offset_w = preprocess_image(image, image_size=image_size)
+    image, scale = preprocess_image(image, image_size=image_size)
     anchors = anchors_for_shape((image_size, image_size))
     
     # run network
