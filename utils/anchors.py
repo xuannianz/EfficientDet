@@ -1,3 +1,6 @@
+import pyximport
+pyximport.install()
+
 # import keras
 import numpy as np
 from tensorflow import keras
