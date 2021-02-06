@@ -348,6 +348,7 @@ class BoxNet(models.Model):
         feature, level = inputs
         for i in range(self.depth):
             feature = self.convs[i](feature)
+            print(i, self.level)
             feature = self.bns[i][self.level](feature)
             feature = self.relu(feature)
         outputs = self.head(feature)
