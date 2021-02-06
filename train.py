@@ -363,16 +363,11 @@ def main(args=None):
         raise ValueError('When you have no validation data, you should not specify --compute-val-loss.')
 
     # start training
-    return model.fit_generator(
+    return model.fit(
         generator=train_generator,
         steps_per_epoch=args.steps,
-        initial_epoch=0,
         epochs=args.epochs,
-        verbose=1,
         callbacks=callbacks,
-        workers=args.workers,
-        use_multiprocessing=args.multiprocessing,
-        max_queue_size=args.max_queue_size,
         validation_data=validation_generator
     )
 
