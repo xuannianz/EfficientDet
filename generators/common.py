@@ -6,6 +6,9 @@ from tensorflow import keras
 
 from utils.anchors import anchors_for_shape, anchor_targets_bbox, AnchorParameters
 
+import multiprocessing
+from joblib import Parallel, delayed
+NUM_CORES = multiprocessing.cpu_count()
 
 class Generator(keras.utils.Sequence):
     """
@@ -127,7 +130,14 @@ class Generator(keras.utils.Sequence):
         """
         Load annotations for all images in group.
         """
-        annotations_group = [self.load_annotations(image_index) for image_index in group]
+        annotations_group = [None]*len(group)
+
+        def set_ann(i, image_index):
+            annotations_group[i] = self.load_annotations(image_index)
+
+        with Parallel(n_jobs=NUM_CORES, prefer="threads") as parallel:
+            _ = parallel(delayed(set_ann)(i, image_index) for i,image_index in enumerate(group))
+        
         for annotations in annotations_group:
             assert (isinstance(annotations,
                                dict)), '\'load_annotations\' should return a list of dictionaries, received: {}'.format(
@@ -222,7 +232,14 @@ class Generator(keras.utils.Sequence):
         """
         Load images for all images in a group.
         """
-        return [self.load_image(image_index) for image_index in group]
+        images = [None]*len(group)
+        
+        def set_img(i, image_index):
+            images[i] = self.load_image(image_index)
+        
+        with Parallel(n_jobs=NUM_CORES, prefer="threads") as parallel:
+            _ = parallel(delayed(set_img)(i, image_index) for i,image_index in enumerate(group))
+        return images
 
     def random_visual_effect_group_entry(self, image, annotations):
         """

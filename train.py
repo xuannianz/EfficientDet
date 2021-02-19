@@ -14,16 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from silence_tensorflow import silence_tensorflow
+silence_tensorflow()
+
 import argparse
 from datetime import date
 import os
 import sys
+import numpy as np
 import tensorflow as tf
-
-# import keras
-# import keras.preprocessing.image
-# import keras.backend as K
-# from keras.optimizers import Adam, SGD
+import tensorflow_addons as tfa
 
 from tensorflow import keras
 import tensorflow.keras.backend as K
@@ -105,32 +105,34 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
         # ensure directory created first; otherwise h5py will error after epoch.
         makedirs(args.snapshot_path)
         checkpoint = keras.callbacks.ModelCheckpoint(
-            os.path.join(
-                args.snapshot_path,
-                f'{args.dataset_type}_{{epoch:02d}}_{{loss:.4f}}_{{val_loss:.4f}}.h5' if args.compute_val_loss
-                else f'{args.dataset_type}_{{epoch:02d}}_{{loss:.4f}}.h5'
-            ),
+            os.path.join(args.snapshot_path, f'{args.dataset_type}.h5'),
             verbose=1,
             save_weights_only=True,
-            # save_best_only=True,
-            # monitor="mAP",
-            # mode='max'
+            save_best_only=True,
+            monitor='val_loss',
+            mode='min'
         )
         callbacks.append(checkpoint)
 
-    # callbacks.append(keras.callbacks.ReduceLROnPlateau(
-    #     monitor='loss',
-    #     factor=0.1,
-    #     patience=2,
-    #     verbose=1,
-    #     mode='auto',
-    #     min_delta=0.0001,
-    #     cooldown=0,
-    #     min_lr=0
-    # ))
+    callbacks.append(keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.8,
+        patience=2,
+        verbose=1,
+        mode='auto',
+        cooldown=0,
+        min_lr=1e-6
+    ))
+    
+    callbacks.append(keras.callbacks.CSVLogger(
+        filename = os.path.join(args.snapshot_path, f'{args.dataset_type}_history.csv')
+    ))
+    
+    callbacks.append(keras.callbacks.EarlyStopping(
+        patience = 10
+    ))
 
     return callbacks
-
 
 def create_generators(args):
     """
@@ -265,7 +267,8 @@ def parse_args(args):
     parser.add_argument('--freeze-backbone', help='Freeze training of backbone layers.', action='store_true')
     parser.add_argument('--freeze-bn', help='Freeze training of BatchNormalization layers.', action='store_true')
     parser.add_argument('--weighted-bifpn', help='Use weighted BiFPN', action='store_true')
-
+    
+    parser.add_argument('--lr', help='Learning rate.', default=1e-3, type=float)
     parser.add_argument('--batch-size', help='Size of the batches.', default=1, type=int)
     parser.add_argument('--phi', help='Hyper parameter phi', default=0, type=int, choices=(0, 1, 2, 3, 4, 5, 6))
     parser.add_argument('--gpu', help='Id of the GPU to use (as reported by nvidia-smi).')
@@ -307,16 +310,19 @@ def main(args=None):
     # optionally choose specific GPU
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+    strategy = tf.distribute.MirroredStrategy()
 
     # K.set_session(get_session())
-
-    model, prediction_model = efficientdet(args.phi,
-                                           num_classes=num_classes,
-                                           num_anchors=num_anchors,
-                                           weighted_bifpn=args.weighted_bifpn,
-                                           freeze_bn=args.freeze_bn,
-                                           detect_quadrangle=args.detect_quadrangle
-                                           )
+    
+    with strategy.scope():
+        model, prediction_model = efficientdet(args.phi,
+                                               num_classes=num_classes,
+                                               num_anchors=num_anchors,
+                                               weighted_bifpn=args.weighted_bifpn,
+                                               freeze_bn=args.freeze_bn,
+                                               detect_quadrangle=args.detect_quadrangle
+                                               )
+    
     # load pretrained weights
     if args.snapshot:
         if args.snapshot == 'imagenet':
@@ -330,7 +336,7 @@ def main(args=None):
             model.load_weights(weights_path, by_name=True)
         else:
             print('Loading model, this may take a second...')
-            model.load_weights(args.snapshot, by_name=True)
+            model.load_weights(args.snapshot)
 
     # freeze backbone layers
     if args.freeze_backbone:
@@ -338,14 +344,12 @@ def main(args=None):
         for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
             model.layers[i].trainable = False
 
-    if args.gpu and len(args.gpu.split(',')) > 1:
-        model = keras.utils.multi_gpu_model(model, gpus=list(map(int, args.gpu.split(','))))
-
     # compile model
-    model.compile(optimizer=Adam(lr=1e-3), loss={
-        'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
-        'classification': focal()
-    }, )
+    with strategy.scope():
+        model.compile(optimizer=Adam(lr=args.lr), loss={
+            'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
+            'classification': focal()
+        }, )
 
     # print(model.summary())
 
@@ -365,7 +369,7 @@ def main(args=None):
     # start training
     return model.fit(
         train_generator,
-        steps_per_epoch=args.steps,
+        steps_per_epoch=len(train_generator),
         epochs=args.epochs,
         callbacks=callbacks,
         validation_data=validation_generator
