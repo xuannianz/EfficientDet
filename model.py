@@ -418,6 +418,7 @@ class ClassNet(models.Model):
 
 def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freeze_bn=False,
                  score_threshold=0.01, detect_quadrangle=False, anchor_parameters=None, separable_conv=True):
+    
     assert phi in range(7)
     input_size = image_sizes[phi]
     input_shape = (input_size, input_size, 3)

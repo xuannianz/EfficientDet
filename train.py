@@ -32,9 +32,14 @@ from tensorflow.keras.optimizers import Adam, SGD
 from augmentor.color import VisualEffect
 from augmentor.misc import MiscEffect
 from model import efficientdet
-from losses import smooth_l1, focal, smooth_l1_quad
+from losses import smooth_l1, focal, smooth_l1_quad, iou_loss
 from efficientnet import BASE_WEIGHTS_PATH, WEIGHTS_HASHES
 
+def seed_everything(seed=33):
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+seed_everything()
 
 def makedirs(path):
     # Intended behavior: try to create the directory,
@@ -113,24 +118,29 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
             mode='min'
         )
         callbacks.append(checkpoint)
-
-    callbacks.append(keras.callbacks.ReduceLROnPlateau(
-        monitor='val_loss',
-        factor=0.8,
-        patience=2,
-        verbose=1,
-        mode='auto',
-        cooldown=0,
-        min_lr=1e-6
-    ))
     
-    callbacks.append(keras.callbacks.CSVLogger(
-        filename = os.path.join(args.snapshot_path, f'{args.dataset_type}_history.csv')
-    ))
+    # save weights each 10 epochs after 50 epochs
+    def save_weigths(epoch, logs):
+        if epoch>50 and (epoch-1)%10==0:
+            model.save_weights(os.path.join(args.snapshot_path, f'{args.dataset_type}_{epoch}.h5'))
     
-    callbacks.append(keras.callbacks.EarlyStopping(
-        patience = 10
-    ))
+    callbacks.extend([
+        keras.callbacks.ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.8,
+            patience=2,
+            verbose=1,
+            mode='auto',
+            cooldown=0,
+            min_lr=1e-6),
+        keras.callbacks.CSVLogger(
+            filename = os.path.join(args.snapshot_path, f'{args.dataset_type}_history.csv'),
+            append = True),
+        keras.callbacks.EarlyStopping(
+            patience = 10),
+        keras.callbacks.TerminateOnNaN(),
+        keras.callbacks.LambdaCallback(on_epoch_end = save_weigths)
+    ])
 
     return callbacks
 
@@ -285,7 +295,9 @@ def parse_args(args):
     parser.add_argument('--random-transform', help='Randomly transform image and annotations.', action='store_true')
     parser.add_argument('--compute-val-loss', help='Compute validation loss during training', dest='compute_val_loss',
                         action='store_true')
-
+    parser.add_argument('--loss', help='Loss function to be used.', default='l1', type=str, \
+                        choices=('l1', 'piou_l1', 'piou_l2', 'piou_l3', 'piou_smooth', 'giou', 'iou'))
+    
     # Fit generator arguments
     parser.add_argument('--multiprocessing', help='Use multiprocessing in fit_generator.', action='store_true')
     parser.add_argument('--workers', help='Number of generator workers.', type=int, default=1)
@@ -345,9 +357,14 @@ def main(args=None):
             model.layers[i].trainable = False
 
     # compile model
+    if args.loss=='l1':
+        regression_loss = smooth_l1_quad() if args.detect_quadrangle else smooth_l1()
+    else:
+        regression_loss = iou_loss(mode=args.loss, phi=args.phi)
+    
     with strategy.scope():
         model.compile(optimizer=Adam(lr=args.lr), loss={
-            'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
+            'regression': regression_loss,
             'classification': focal()
         }, )
 
