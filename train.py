@@ -297,6 +297,7 @@ def parse_args(args):
                         action='store_true')
     parser.add_argument('--loss', help='Loss function to be used.', default='l1', type=str, \
                         choices=('l1', 'piou_l1', 'piou_l2', 'piou_l3', 'piou_smooth', 'giou', 'iou'))
+    parser.add_argument('--use_tfrecords', help='If to use tfrecords. If no tfrecords available, it will create them.', action='store_true')
     
     # Fit generator arguments
     parser.add_argument('--multiprocessing', help='Use multiprocessing in fit_generator.', action='store_true')
@@ -367,8 +368,38 @@ def main(args=None):
             'regression': regression_loss,
             'classification': focal()
         }, )
+    
+    # total steps per epoch
+    train_steps = len(train_generator)
+    validation_steps = len(validation_generator)
+    
+    # if to use tfrecords
+    if args.use_tfrecords:
+        from generators.tfrecords import create_tfrecords, get_loader
+        from os.path import exists, join
+        
+        if args.dataset_type == 'pascal':
+            data_path = args.pascal_path
+        elif args.dataset_type == 'coco':
+            data_path = args.coco_path
+        else:
+            raise Exception('Not implemented yet! Try not using tfrecords option...')
+        path_tfrecords = os.path.join(data_path, 'tfrecords')
+        
+        # create tfrecords files
+        if not (exists(join(path_tfrecords, 'train.tfrec')) and exists(join(path_tfrecords, 'val.tfrec'))):
 
-    # print(model.summary())
+            path_tfrecords = join(data_path, 'tfrecords')
+            os.makedirs(path_tfrecords, exist_ok=True)
+
+            print('Creating tfrecords for train data...')
+            create_tfrecords(path_tfrecords, 'train', train_generator)
+            print('Creating tfrecords for validation data...')
+            create_tfrecords(path_tfrecords, 'val', validation_generator)
+            
+        # get tfrecords loaders
+        train_generator = get_loader(path_tfrecords, 'train', args.batch_size)
+        validation_generator = get_loader(path_tfrecords, 'val', args.batch_size)
 
     # create the callbacks
     callbacks = create_callbacks(
@@ -382,16 +413,16 @@ def main(args=None):
         validation_generator = None
     elif args.compute_val_loss and validation_generator is None:
         raise ValueError('When you have no validation data, you should not specify --compute-val-loss.')
-
+    
     # start training
     return model.fit(
         train_generator,
-        steps_per_epoch=len(train_generator),
+        steps_per_epoch=train_steps,
         epochs=args.epochs,
         callbacks=callbacks,
-        validation_data=validation_generator
+        validation_data=validation_generator,
+        validation_steps=validation_steps
     )
-
 
 if __name__ == '__main__':
     main()
