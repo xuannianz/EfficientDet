@@ -1,5 +1,5 @@
 Keras==2.2.5
-opencv-contrib-python==3.4.2.17
+opencv-contrib-python==3.4.7.28
 opencv-python==3.4.2.17
 Pillow==6.2.0
 tensorflow-gpu==1.15.0
