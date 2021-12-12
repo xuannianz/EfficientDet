@@ -5,9 +5,8 @@
 # Written by Sergey Karayev
 # --------------------------------------------------------
 
-cimport cython
+import cython
 import numpy as np
-cimport numpy as np
 
 
 def compute_overlap(
